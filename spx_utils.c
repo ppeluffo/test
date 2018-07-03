@@ -30,7 +30,7 @@ void initMCU(void)
 	IO_config_BT_PWR_CTL();
 
 	// TICK:
-	IO_config_TICK();
+	//IO_config_TICK();
 
 }
 //-----------------------------------------------------------
@@ -202,6 +202,29 @@ int i;
 	va_start(args, fmt);
 	vsnprintf_P( (char *)stdout_buff,sizeof(stdout_buff),fmt,args);
 	i = sFRTOS_write(fd, (char *)stdout_buff,PRINTF_BUFFER_SIZE);
+
+	xSemaphoreGive( sem_stdout_buff );
+	return(i);
+
+}
+//------------------------------------------------------------------------------------
+int cmd_xprintf_P( int fd, PGM_P fmt, ...)
+{
+	// Similar a xprintf_P pero imprime en los 2 descriptores pUSB y pBT
+
+va_list args;
+int i;
+
+	// Espero el semaforo del buffer en forma persistente.
+	while ( xSemaphoreTake( sem_stdout_buff, ( TickType_t ) 1 ) != pdTRUE )
+		vTaskDelay( ( TickType_t)( 1 ) );
+
+	// Ahora tengo en stdout_buff formateado para imprimir
+	va_start(args, fmt);
+	vsnprintf_P( (char *)stdout_buff,sizeof(stdout_buff),fmt,args);
+
+	sFRTOS_write(pUSB, (char *)stdout_buff,PRINTF_BUFFER_SIZE);
+//	sFRTOS_write(pBT, (char *)stdout_buff,PRINTF_BUFFER_SIZE);
 
 	xSemaphoreGive( sem_stdout_buff );
 	return(i);

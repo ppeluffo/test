@@ -19,13 +19,28 @@
  *  Para ver el uso de memoria usamos
  *  avr-nm -n test_io.elf | more
  *
+ *------------------------------------------------------------------------------------------
+ * 2018-07-02:
+ *  - Pasamos a FRTOS10. Excluimos timers.c, mpu_wrappers.c, etc.
+ *  - Usamos el heap.c.1 de modo que la memoria consumida se ve en el plano de memoria
+ *  - Modificamos el port.c para que el save/restore sea de 3 bytes y use el modo tickeless.
+ *  - Pasamos a usar string_buffers para la recepcion de las uarts.
+ *    El tamaño de las queues es de UBaseType_t(1byte) en cambio el de las string_buffers es
+ *    del tipo size_t(2 bytes)
+ *  - Creamos una libreria l_queues para poder usar colas de mas de 255 bytes.
+ *  - En el frtos_io, manejamos c/dispositivo con funciones propias. La generalidad la damos con
+ *    las funciones frtos_io, pero c/puerto luego lo manejamos en forma individual.
+ *    En particular para las UARTs usamos UART_queue con lo que dejamos abierto a una posible variante.
+ *  - Modifico el driver I2C para generar un codigo de error y eliminar los mensajes.
+ *    La idea es que los drivers no generen mensajes.
+ *  - En c/tarea saco las variables de las funciones para que al ser externas tenga mas control
+ *    de la profundidad del stack.
+ *
+ *------------------------------------------------------------------------------------------
  *	Crear un proyecto donde simplifique el IO
  *		Revisar secuencia de valores devueltos, profundidad del stack y variables usadas locales.
  *		Revisar tiempos de espera en sFRTOS_UART_read.
- *	Pasarlo a FRTOS9
  *	Usar buffers y estructuras estaticas
- *	port.c para manejar 256K memoria. !!!
- *	pasar el FRTOS-CMD al AVRLIB cmdline
  *	Diagrama de drivers y librerias
  *	Ver uso de queues mas chicas que los buffers
  *	Esquema de control de acceso a buffers comunes ( uart, printf)
@@ -118,6 +133,9 @@ int main( void )
 
 	//FreeRTOS_open(pUART_USB, ( UART_RXFIFO + UART_TXQUEUE ));
 	sFRTOS_open(pUSB, 115200 );
+	sFRTOS_open(pBT, 115200 );
+	sFRTOS_open(pI2C,100);
+	sFRTOS_open(pNVM,0);
 
 	// Creo los semaforos
 	sem_SYSVars = xSemaphoreCreateMutex();
@@ -137,7 +155,6 @@ int main( void )
 
 }
 //-----------------------------------------------------------
-
 void vApplicationIdleHook( void )
 {
 	// Como trabajo en modo tickless no entro mas en modo sleep aqui.
@@ -145,7 +162,6 @@ void vApplicationIdleHook( void )
 //		sleep_mode();
 //	}
 }
-
 //-----------------------------------------------------------
 /* Define the function that is called by portSUPPRESS_TICKS_AND_SLEEP(). */
 //------------------------------------------------------------------------------------

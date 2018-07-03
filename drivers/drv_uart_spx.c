@@ -9,39 +9,20 @@
 #include "drv_uart_spx.h"
 
 //----------------------------------------------------------------------------
-void drvUART_open( const int UARTx )
+void drv_UART_baud_ctl(uint8_t *baudA, uint8_t *baudB, uint8_t *ctl)
 {
-
-	// La inicializacion de las UART se hace como:
-	// TXD pin = high
-	// TXD pin output
-	// baudrate / frame format
-	// Enable TX,RX
-
-	portENTER_CRITICAL();
-
-	//
-	switch ( UARTx ) {
-	case pUSB:
-
-		// Corresponde a PORTD
-		PORTD.DIRSET   = PIN3_bm;	/* PD3 (TXD0) as output. */
-		PORTD.DIRCLR   = PIN2_bm;	/* PD2 (RXD0) as input. */
-		/* USARTD0, 8 Data bits, No Parity, 1 Stop bit. */
-		USARTD0.CTRLC = (uint8_t) USART_CHSIZE_8BIT_gc | USART_PMODE_DISABLED_gc;
-
 #if F_CPU == 32000000
-		/* Set Baudrate to 115200 bps:
-		 * Use the default I/O clock frequency that is 32 MHz.
-		 * Los valores los extraigo de la planilla provista por Atmel
-		 * 32Mhz
-		 * BSEL = 2094
-		 * BSCALE = -7
-		 * CLK2X = 0
-		 * %error = 0,01%
-		 */
-		USARTD0.BAUDCTRLA = (uint8_t) 2094;
-		USARTD0.BAUDCTRLB = ( -7 << USART_BSCALE0_bp)|(2094 >> 8);
+	/* Set Baudrate to 115200 bps:
+	 * Use the default I/O clock frequency that is 32 MHz.
+	 * Los valores los extraigo de la planilla provista por Atmel
+	 * 32Mhz
+	 * BSEL = 2094
+	 * BSCALE = -7
+	 * CLK2X = 0
+	 * %error = 0,01%
+	 */
+	*baudA = (uint8_t) 2094;
+	*baudB = ( -7 << USART_BSCALE0_bp)|(2094 >> 8);
 #endif
 
 #if F_CPU == 8000000
@@ -54,10 +35,10 @@ void drvUART_open( const int UARTx )
 		 * CLK2X = 1
 		 * %error = 0,01%
 		 */
-		USARTD0.BAUDCTRLA = (uint8_t) 983;
-		USARTD0.BAUDCTRLB = ( -7 << USART_BSCALE0_bp)|(983 >> 8);
+	*baudA = (uint8_t) 983;
+	*baudB = ( -7 << USART_BSCALE0_bp)|(983 >> 8);
 		// Habilito CLK2X
-		USARTD0.CTRLB |= USART_CLK2X_bm;
+	*ctl |= USART_CLK2X_bm;
 #endif
 
 #if F_CPU == 2000000
@@ -70,26 +51,9 @@ void drvUART_open( const int UARTx )
 		 * CLK2X = 0
 		 * %error = 0,08%
 		 */
-		USARTD0.BAUDCTRLA = (uint8_t) 11;
-		USARTD0.BAUDCTRLB = ( -7 << USART_BSCALE0_bp)|(11 >> 8);
+		*baudA = (uint8_t) 11;
+		*baudB = ( -7 << USART_BSCALE0_bp)|(11 >> 8);
 #endif
-
-		// Habilito la TX y RX
-		USARTD0.CTRLB |= USART_RXEN_bm;
-		USARTD0.CTRLB |= USART_TXEN_bm;
-
-		// Habilito la interrupcion de Recepcion ( low level )
-		// low level, RXint enabled
-		USARTD0.CTRLA |= _BV(4);	// RXCINTLVL_0 = 1
-		USARTD0.CTRLA &= ~(_BV(5));	// RXCINTLVL_1 = 0
-		//USARTD0.CTRLA = ( USARTD0.CTRLA & ~USART_RXCINTLVL_gm ) | USART_RXCINTLVL_LO_gc;
-		break;
-
-	}
-
-	portEXIT_CRITICAL();
-
-	return;
 }
 //----------------------------------------------------------------------------
 void drvUART_InterruptOn( const int UARTx )
@@ -127,16 +91,56 @@ uint8_t tempCTRLA;
 	}
 }
 //----------------------------------------------------------------------------
+// UART_USB: PORTD
+//----------------------------------------------------------------------------
+void drvUART_USB_open( const uint32_t flags )
+{
+	// El puerto del USB es PORTD:
+	// TXD pin = high
+	// TXD pin output
+	// baudrate / frame format
+	// Enable TX,RX
+
+uint8_t baudA, baudB, ctl;
+
+	portENTER_CRITICAL();
+
+	PORTD.DIRSET   = PIN3_bm;	/* PD3 (TXD0) as output. */
+	PORTD.DIRCLR   = PIN2_bm;	/* PD2 (RXD0) as input. */
+	/* USARTD0, 8 Data bits, No Parity, 1 Stop bit. */
+	USARTD0.CTRLC = (uint8_t) USART_CHSIZE_8BIT_gc | USART_PMODE_DISABLED_gc;
+
+	ctl = USARTD0.CTRLB;
+	drv_UART_baud_ctl(&baudA, &baudB, &ctl);
+	USARTD0.BAUDCTRLA = baudA;
+	USARTD0.BAUDCTRLB = baudB;
+	USARTD0.CTRLB = ctl;
+
+	// Habilito la TX y RX
+	USARTD0.CTRLB |= USART_RXEN_bm;
+	USARTD0.CTRLB |= USART_TXEN_bm;
+
+	// Habilito la interrupcion de Recepcion ( low level )
+	// low level, RXint enabled
+	USARTD0.CTRLA |= _BV(4);	// RXCINTLVL_0 = 1
+	USARTD0.CTRLA &= ~(_BV(5));	// RXCINTLVL_1 = 0
+	//USARTD0.CTRLA = ( USARTD0.CTRLA & ~USART_RXCINTLVL_gm ) | USART_RXCINTLVL_LO_gc;
+
+	portEXIT_CRITICAL();
+
+	return;
+}
+//----------------------------------------------------------------------------
 ISR(USARTD0_DRE_vect)
 {
 
 int8_t cTaskWoken;
 char cChar;
-int8_t res = pdFALSE;
+bool res = false;
 
 	res = xQueueReceiveFromISR( spd_USB.uart.txQueue, &cChar, &cTaskWoken );
 
-	if( res == pdTRUE ) {
+	if( res == true ) {
 		/* Send the next character queued for Tx. */
 		USARTD0.DATA = cChar;
 	} else {
@@ -155,9 +159,79 @@ char cChar;
 	 * may have a higher priority than the task we have interrupted.
     */
 	cChar = USARTD0.DATA;
+	xQueueSendFromISR( spd_USB.uart.rxQueue, &cChar, 0 );
 
-	if( xQueueSendFromISR( spd_USB.uart.rxQueue, &cChar, 0 ) ) {
-		taskYIELD();
+}
+//----------------------------------------------------------------------------
+// BT_USB: PORTD
+//----------------------------------------------------------------------------
+void drvUART_BT_open( const uint32_t flags )
+{
+	// El puerto del USB es PORTF:
+	// TXD pin = high
+	// TXD pin output
+	// baudrate / frame format
+	// Enable TX,RX
+
+uint8_t baudA, baudB, ctl;
+
+	portENTER_CRITICAL();
+
+	PORTF.DIRSET   = PIN3_bm;	/* PD3 (TXD0) as output. */
+	PORTF.DIRCLR   = PIN2_bm;	/* PD2 (RXD0) as input. */
+	/* USARTD0, 8 Data bits, No Parity, 1 Stop bit. */
+	USARTF0.CTRLC = (uint8_t) USART_CHSIZE_8BIT_gc | USART_PMODE_DISABLED_gc;
+
+	ctl = USARTF0.CTRLB;
+	drv_UART_baud_ctl(&baudA, &baudB, &ctl);
+	USARTF0.BAUDCTRLA = baudA;
+	USARTF0.BAUDCTRLB = baudB;
+	USARTF0.CTRLB = ctl;
+
+	// Habilito la TX y RX
+	USARTF0.CTRLB |= USART_RXEN_bm;
+	USARTF0.CTRLB |= USART_TXEN_bm;
+
+	// Habilito la interrupcion de Recepcion ( low level )
+	// low level, RXint enabled
+	USARTF0.CTRLA |= _BV(4);	// RXCINTLVL_0 = 1
+	USARTF0.CTRLA &= ~(_BV(5));	// RXCINTLVL_1 = 0
+	//USARTF0.CTRLA = ( USARTF0.CTRLA & ~USART_RXCINTLVL_gm ) | USART_RXCINTLVL_LO_gc;
+
+	portEXIT_CRITICAL();
+
+	return;
+}
+//----------------------------------------------------------------------------
+ISR(USARTF0_DRE_vect)
+{
+
+int8_t cTaskWoken;
+char cChar;
+bool res = false;
+
+	res = xQueueReceiveFromISR( spd_BT.uart.txQueue, &cChar, &cTaskWoken );
+
+	if( res == true ) {
+		/* Send the next character queued for Tx. */
+		USARTF0.DATA = cChar;
+	} else {
+		/* Queue empty, nothing to send. */
+		drvUART_InterruptOff( pBT);
 	}
+}
+//----------------------------------------------------------------------------
+ISR(USARTF0_RXC_vect)
+{
+
+char cChar;
+
+	/* Get the character and post it on the queue of Rxed characters.
+	 * If the post causes a task to wake force a context switch as the woken task
+	 * may have a higher priority than the task we have interrupted.
+    */
+	cChar = USARTF0.DATA;
+	xQueueSendFromISR( spd_BT.uart.rxQueue, &cChar, 0 );
+
 }
 //----------------------------------------------------------------------------

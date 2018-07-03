@@ -25,20 +25,21 @@ void PORT_ConfigureInterrupt0( PORT_t * port,PORT_INT0LVL_t intLevel,uint8_t pin
 void PORT_ConfigureInterrupt1( PORT_t * port,PORT_INT1LVL_t intLevel, uint8_t pinMask);
 //------------------------------------------------------------------------------------
 // Control de Frecuencia del TICK
-#define TICK_BITPOS		2
-#define TICK_PORT		PORTA
+//#define TICK_BITPOS		2
+//#define TICK_PORT		PORTA
 
-#define IO_config_TICK()	PORT_SetPinAsOutput( &TICK_PORT, TICK_BITPOS)
-#define IO_set_TICK()		PORT_SetOutputBit( &TICK_PORT, TICK_BITPOS)
-#define IO_clr_TICK()		PORT_ClearOutputBit( &TICK_PORT, TICK_BITPOS)
+//#define IO_config_TICK()	PORT_SetPinAsOutput( &TICK_PORT, TICK_BITPOS)
+//#define IO_set_TICK()		PORT_SetOutputBit( &TICK_PORT, TICK_BITPOS)
+//#define IO_clr_TICK()		PORT_ClearOutputBit( &TICK_PORT, TICK_BITPOS)
 //------------------------------------------------------------------------------------
 // TWI PE0(SDA)/PE1(SCL)
-#define SCL_BITPOS		1
-#define SCL_PORT		PORTE
+// Se pasa al driver drv_i2c_spx.h !!!
+//#define SCL_BITPOS		1
+//#define SCL_PORT		PORTE
 
-#define IO_config_SCL()		PORT_SetPinAsOutput( &SCL_PORT, SCL_BITPOS)
-#define IO_set_SCL()		PORT_SetOutputBit( &SCL_PORT, SCL_BITPOS)
-#define IO_clr_SCL()		PORT_ClearOutputBit( &SCL_PORT, SCL_BITPOS)
+//#define IO_config_SCL()		PORT_SetPinAsOutput( &SCL_PORT, SCL_BITPOS)
+//#define IO_set_SCL()		PORT_SetOutputBit( &SCL_PORT, SCL_BITPOS)
+//#define IO_clr_SCL()		PORT_ClearOutputBit( &SCL_PORT, SCL_BITPOS)
 
 //------------------------------------------------------------------------------------
 // LEDS

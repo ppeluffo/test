@@ -5,7 +5,7 @@
  *      Author: pablo
  */
 
-#include "FRTOS-CMD.h"
+#include "frtos_cmd.h"
 
 // Lista de comandos:
 // Estructura que define la base de datos nombre,funcion de c/comando aceptado.

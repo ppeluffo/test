@@ -41,16 +41,18 @@
 #include "timers.h"
 #include "limits.h"
 
-#include "FRTOS_stdio.h"
-
 #include "frtos_io.h"
 #include "l_iopines.h"
+#include "l_i2c.h"
+#include "l_rtc.h"
+#include "l_ina.h"
+#include "l_anCh.h"
 
 //------------------------------------------------------------------------------------
 // DEFINES
 //------------------------------------------------------------------------------------
-#define SPX_FW_REV "0.1.a"
-#define SPX_FW_DATE "@ 20180702"
+#define SPX_FW_REV "0.0.6"
+#define SPX_FW_DATE "@ 20180703"
 
 #define SPX_HW_MODELO "spx HW:xmega256A3B R1.0"
 #define SPX_FTROS_VERSION "FW:test9 FRTOS10"
@@ -95,6 +97,7 @@ void u_configure_RTC32(void);
 void initMCU(void);
 void xprintf_P_init(void);
 int xprintf_P( int fd, PGM_P fmt, ...);
+int cmd_xprintf_P( int fd, PGM_P fmt, ...);
 
 
 #endif /* SRC_SPXR1_H_ */
