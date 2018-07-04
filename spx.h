@@ -47,12 +47,14 @@
 #include "l_rtc.h"
 #include "l_ina.h"
 #include "l_anCh.h"
+#include "l_nvm.h"
+#include "l_outputs.h"
 
 //------------------------------------------------------------------------------------
 // DEFINES
 //------------------------------------------------------------------------------------
-#define SPX_FW_REV "0.0.6"
-#define SPX_FW_DATE "@ 20180703"
+#define SPX_FW_REV "0.0.1"
+#define SPX_FW_DATE "@ 20180704"
 
 #define SPX_HW_MODELO "spx HW:xmega256A3B R1.0"
 #define SPX_FTROS_VERSION "FW:test9 FRTOS10"

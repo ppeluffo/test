@@ -32,6 +32,9 @@ void initMCU(void)
 	// TICK:
 	//IO_config_TICK();
 
+	// OUTPUTS
+	OUT_config();
+
 }
 //-----------------------------------------------------------
 void u_configure_systemMainClock(void)

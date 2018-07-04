@@ -10,6 +10,8 @@
 
 static void pv_drvNVM_EEPROM_WaitForNVM( void );
 static void pv_drvNVM_EEPROM_FlushBuffer( void );
+static inline uint8_t nvm_read_production_signature_row(uint8_t address);
+//uint8_t nvm_read_byte_near(uint8_t nvm_cmd, uint8_t address);;
 
 #define NVM_EXEC()	asm("push r30"      "\n\t"	\
 			    "push r31"      "\n\t"	\
@@ -123,7 +125,7 @@ uint8_t drvNVM_ReadSignatureByte(uint16_t Address)
 	NVM_CMD = NVM_CMD_NO_OPERATION_gc;
 	return Result;
 }
-//----------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------
 static void pv_drvNVM_EEPROM_FlushBuffer( void )
 {
 	// Flushea el eeprom page buffer.
@@ -150,5 +152,45 @@ static void pv_drvNVM_EEPROM_WaitForNVM( void )
 	do {
 		/* Block execution while waiting for the NVM to be ready. */
 	} while ((NVM.STATUS & NVM_NVMBUSY_bm) == NVM_NVMBUSY_bm);
+}
+//------------------------------------------------------------------------------------
+void nvm_read_device_id(struct nvm_device_id *storage)
+{
+	storage->devid0 = MCU.DEVID0;
+	storage->devid1 = MCU.DEVID1;
+	storage->devid2 = MCU.DEVID2;
+}
+//------------------------------------------------------------------------------------
+void nvm_read_device_serial(struct nvm_device_serial *storage)
+{
+	storage->lotnum0 = nvm_read_production_signature_row(
+			nvm_get_production_signature_row_offset(LOTNUM0));
+	storage->lotnum1 = nvm_read_production_signature_row(
+			nvm_get_production_signature_row_offset(LOTNUM1));
+	storage->lotnum2 = nvm_read_production_signature_row(
+			nvm_get_production_signature_row_offset(LOTNUM2));
+	storage->lotnum3 = nvm_read_production_signature_row(
+			nvm_get_production_signature_row_offset(LOTNUM3));
+	storage->lotnum4 = nvm_read_production_signature_row(
+			nvm_get_production_signature_row_offset(LOTNUM4));
+	storage->lotnum5 = nvm_read_production_signature_row(
+			nvm_get_production_signature_row_offset(LOTNUM5));
+
+	storage->wafnum  = nvm_read_production_signature_row(
+			nvm_get_production_signature_row_offset(WAFNUM));
+
+	storage->coordx0 = nvm_read_production_signature_row(
+			nvm_get_production_signature_row_offset(COORDX0));
+	storage->coordx1 = nvm_read_production_signature_row(
+			nvm_get_production_signature_row_offset(COORDX1));
+	storage->coordy0 = nvm_read_production_signature_row(
+			nvm_get_production_signature_row_offset(COORDY0));
+	storage->coordy1 = nvm_read_production_signature_row(
+			nvm_get_production_signature_row_offset(COORDY1));
+}
+//------------------------------------------------------------------------------------
+static inline uint8_t nvm_read_production_signature_row(uint8_t address)
+{
+//	return nvm_read_byte_near(NVM_CMD_READ_CALIB_ROW_gc, address);
 }
 //------------------------------------------------------------------------------------

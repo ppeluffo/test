@@ -393,9 +393,9 @@ int sFRTOS_NVM_ioctl ( t_nvmc_device *spd, uint32_t ulRequest, void *pvValue )
 {
 
 int xReturn = 1;
-uint16_t *p;
+//uint16_t *p;
 
-	p = pvValue;
+//	p = pvValue;
 
 	switch( ulRequest ) {
 	case ioctlOBTAIN_BUS_SEMPH:
@@ -410,7 +410,7 @@ uint16_t *p;
 		spd->xBlockTime = *((uint8_t *)pvValue);
 		break;
 	case ioctl_NVM_SET_BYTEADDRESS:
-		spd->byteAddress = (uint16_t)(*p);
+		spd->byteAddress = *((uint16_t *)pvValue);
 		break;
 	case ioctl_NVM_ERASE_ALL:
 		drvNVM_EEPROM_EraseAll();

@@ -11,6 +11,8 @@
 #include "l_eeprom.h"
 #include "l_ina.h"
 #include "l_anCh.h"
+#include "l_nvm.h"
+#include "l_outputs.h"
 
 #define WR_CMD 0
 #define RD_CMD 1
@@ -22,6 +24,8 @@ static void pv_cmd_rwRTC(uint8_t cmd_mode );
 static void pv_cmd_rwEE(uint8_t cmd_mode );
 static void pv_cmd_rwINA(uint8_t cmd_mode );
 static void pv_cmd_rwACH(uint8_t cmd_mode );
+static void pv_cmd_rwNVM(uint8_t cmd_mode );
+static void pv_cmd_OUTPUTS( void );
 
 RtcTimeType_t rtc;
 char aux_buffer[32];
@@ -63,11 +67,20 @@ uint8_t c;
 	for( ;; )
 	{
 
-		c = '\0';	// Lo borro para que luego del un CR no resetee siempre el timer.
-		// el read se bloquea 50ms. lo que genera la espera.
-		while ( sFRTOS_read( pUSB, (char *)&c, 1 ) == 1 ) {
-			FRTOS_CMD_process(c);
-		}
+//		pub_watchdog_kick(WDG_CMD, WDG_CMD_TIMEOUT);
+
+		// Si no tengo terminal conectada, duermo 5s lo que me permite entrar en tickless.
+//		if ( ! pub_terminal_is_on() ) {
+//			vTaskDelay( ( TickType_t)( 5000 / portTICK_RATE_MS ) );
+
+//		} else {
+
+			c = '\0';	// Lo borro para que luego del un CR no resetee siempre el timer.
+			// el read se bloquea 50ms. lo que genera la espera.
+			while ( sFRTOS_read( pUSB, (char *)&c, 1 ) == 1 ) {
+				FRTOS_CMD_process(c);
+			}
+//		}
 	}
 }
 //------------------------------------------------------------------------------------
@@ -128,10 +141,26 @@ static void cmdWriteFunction(void)
 		return;
 	}
 
-	// ACH
-	// write ach {id} conf128
-	if (!strcmp_P( strupr(argv[1]), PSTR("ACH\0")) ) {
+	// ANALOG
+	// write analog {ina_id} conf128
+	if (!strcmp_P( strupr(argv[1]), PSTR("ANALOG\0")) ) {
 		pv_cmd_rwACH(WR_CMD);
+		return;
+	}
+
+	// NVM
+	// write nvm pos string
+	if (!strcmp_P( strupr( (char *)argv[1]), PSTR("NVM\0"))) {
+		pv_cmd_rwNVM(WR_CMD);
+		return;
+	}
+
+	// OUT
+	// write out {enable,disable,sleep,awake,set01,set10} {A/B}\r\n\0"));
+	// write out pulse (A/B) (ms)\r\n\0"));
+	// write out power {on|off}\r\n\0"));
+	if (!strcmp_P( strupr( (char *)argv[1]), PSTR("OUT\0"))) {
+		pv_cmd_OUTPUTS();
 		return;
 	}
 
@@ -167,12 +196,27 @@ static void cmdReadFunction(void)
 		return;
 	}
 
-	// ACH
-	// read aCh {ch}, bat
-	if (!strcmp_P( strupr(argv[1]), PSTR("ACH\0")) ) {
+	// ANALOG
+	// read analog {ch}, bat
+	if (!strcmp_P( strupr(argv[1]), PSTR("ANALOG\0")) ) {
 		pv_cmd_rwACH(RD_CMD);
 		return;
 	}
+
+	// NVM
+	// read nvm address length
+	if (!strcmp_P( strupr( (char *)argv[1]), PSTR("NVM\0"))) {
+		pv_cmd_rwNVM(RD_CMD);
+		return;
+	}
+
+	// UID
+	// read uid
+	if (!strcmp_P( strupr( (char *)argv[1]), PSTR("UID\0"))) {
+		cmd_xprintf_P(pUSB, PSTR("UID: %s\r\n\0"), NVMEE_readID() );
+		return;
+	}
+
 
 	// CMD NOT FOUND
 	cmd_xprintf_P(pUSB,PSTR("ERROR\r\nCMD NOT DEFINED\r\n\0"));
@@ -205,16 +249,22 @@ static void cmdHelpFunction(void)
 		cmd_xprintf_P(pUSB,PSTR("  rtc YYMMDDhhmm\r\n\0"));
 		cmd_xprintf_P(pUSB,PSTR("  ee {pos} {string}\r\n\0"));
 		cmd_xprintf_P(pUSB,PSTR("  ina {id} conf {value}, sens12V {on|off}\r\n\0"));
-		cmd_xprintf_P(pUSB,PSTR("  ach {id} conf128 \r\n\0"));
+		cmd_xprintf_P(pUSB,PSTR("  analog {ina_id} conf128 \r\n\0"));
+		cmd_xprintf_P(pUSB,PSTR("  nvm {pos} {string}\r\n\0"));
+		cmd_xprintf_P(pUSB,PSTR("  out {enable,disable,sleep,awake,set01,set10} {A/B}\r\n\0"));
+		cmd_xprintf_P(pUSB,PSTR("      pulse (A/B) (ms)\r\n\0"));
+		cmd_xprintf_P(pUSB,PSTR("      power {on|off}\r\n\0"));
+
 		return;
 
 	// HELP READ
 	} else if (!strcmp_P( strupr( (char *)argv[1]), PSTR("READ\0"))) {
 		cmd_xprintf_P(pUSB,PSTR("-read\r\n\0"));
-		cmd_xprintf_P(pUSB,PSTR("  rtc, frame\r\n\0"));
+		cmd_xprintf_P(pUSB,PSTR("  rtc\r\n\0"));
 		cmd_xprintf_P(pUSB,PSTR("  ee {pos} {lenght}\r\n\0"));
 		cmd_xprintf_P(pUSB,PSTR("  ina {id} {conf|chXshv|chXbusv|mfid|dieid}\r\n\0"));
-		cmd_xprintf_P(pUSB,PSTR("  aCh {ch}, bat \r\n\0"));
+		cmd_xprintf_P(pUSB,PSTR("  analog {ch}, bat \r\n\0"));
+		cmd_xprintf_P(pUSB,PSTR("  uid, nvm {pos} {lenght}\r\n\0"));
 		return;
 
 	} else {
@@ -409,5 +459,86 @@ uint8_t channel;
 	}
 }
 //------------------------------------------------------------------------------------
+static void pv_cmd_rwNVM(uint8_t cmd_mode )
+{
 
+bool retS;
+uint8_t length = 0;
+char *p;
 
+	// read nvm {pos} {lenght}
+	if ( cmd_mode == RD_CMD ) {
+		memset( aux_buffer, '\0', sizeof(aux_buffer));
+		retS = NVMEE_read( (uint32_t)(atol(argv[2])), &aux_buffer[0], (uint8_t)(atoi(argv[3])) );
+		if ( retS ) {
+			// El string leido lo devuelve en cmd_printfBuff por lo que le agrego el CR.
+			cmd_xprintf_P(pUSB,PSTR("%s\r\n\0"),&aux_buffer[0] );
+		}
+		retS ? pv_snprintfP_OK() : 	pv_snprintfP_ERR();
+		return;
+	}
+
+	// write nvm pos string
+	if ( cmd_mode == WR_CMD ) {
+		// Calculamos el largo del texto a escribir en la eeprom.
+		p = argv[3];
+		while (*p != 0) {
+			p++;
+			length++;
+		}
+
+		retS = NVMEE_write( (uint32_t)(atol(argv[2])), argv[3], length );
+		retS ? pv_snprintfP_OK() : 	pv_snprintfP_ERR();
+		return;
+	}
+
+}
+//------------------------------------------------------------------------------------
+static void pv_cmd_OUTPUTS( void )
+{
+	// OUT
+	// write out {enable,disable,sleep,awake,set01,set10} {A/B}\r\n\0"));
+	// write out pulse (A/B) (ms)\r\n\0"));
+	// write out power {on|off}\r\n\0"));
+
+char driver_id;
+
+	driver_id = argv[3][0];
+
+	if (!strcmp_P( strupr( (char *)argv[2]), PSTR("ENABLE\0"))) {
+		OUT_driver( driver_id, OUT_ENABLE );
+		pv_snprintfP_OK();
+		return;
+
+	} else 	if (!strcmp_P( strupr( (char *)argv[2]), PSTR("DISABLE\0"))) {
+		OUT_driver( driver_id, OUT_DISABLE );
+		pv_snprintfP_OK();
+		return;
+
+	} else 	if (!strcmp_P( strupr( (char *)argv[2]), PSTR("SLEEP\0"))) {
+		OUT_driver( driver_id, OUT_SLEEP );
+		pv_snprintfP_OK();
+		return;
+
+	} else 	if (!strcmp_P( strupr( (char *)argv[2]), PSTR("AWAKE\0"))) {
+		OUT_driver( driver_id, OUT_AWAKE );
+		pv_snprintfP_OK();
+		return;
+
+	} else 	if (!strcmp_P( strupr( (char *)argv[2]), PSTR("SET01\0"))) {
+		OUT_driver( driver_id, OUT_SET_01 );
+		pv_snprintfP_OK();
+		return;
+
+	} else 	if (!strcmp_P( strupr( (char *)argv[2]), PSTR("SET10\0"))) {
+		OUT_driver( driver_id, OUT_SET_10 );
+		pv_snprintfP_OK();
+		return;
+
+	}  else {
+
+		pv_snprintfP_ERR();
+		return;
+	}
+}
+//------------------------------------------------------------------------------------
