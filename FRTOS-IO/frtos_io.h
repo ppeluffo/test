@@ -73,11 +73,19 @@ t_i2c_device	spd_I2C;
 t_nvmc_device spd_NVM;
 
 // Las queue no pueden ser mayores a 256 bytes.
+
 #define  UART_USB_RXBUFFER_SIZE ( ( uint8_t ) ( 128 ))
 #define  UART_USB_TXBUFFER_SIZE ( ( uint8_t ) ( 128 ))
 
+StaticSemaphore_t USB_xMutexBuffer;
+static StaticQueue_t USB_RX_xStaticQueue;
+static StaticQueue_t USB_TX_xStaticQueue;
+uint8_t USB_RX_ucQueueStorageArea[ UART_USB_RXBUFFER_SIZE * sizeof(char) ];
+uint8_t USB_TX_ucQueueStorageArea[ UART_USB_TXBUFFER_SIZE * sizeof(char) ];
+
 #define  UART_BT_RXBUFFER_SIZE ( ( uint8_t ) ( 128 ))
 #define  UART_BT_TXBUFFER_SIZE ( ( uint8_t ) ( 128 ))
+
 
 #define ioctlOBTAIN_BUS_SEMPH				1
 #define ioctlRELEASE_BUS_SEMPH				2

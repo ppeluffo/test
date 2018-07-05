@@ -14,7 +14,9 @@ void RTC32_ToscEnable( bool use1khz );
 #define PRINTF_BUFFER_SIZE        128U
 
 static uint8_t stdout_buff[PRINTF_BUFFER_SIZE];
-xSemaphoreHandle sem_stdout_buff;
+
+SemaphoreHandle_t sem_stdout_buff;
+StaticSemaphore_t STDOUT_xMutexBuffer;
 
 //-----------------------------------------------------------
 void initMCU(void)
@@ -216,7 +218,6 @@ int cmd_xprintf_P( int fd, PGM_P fmt, ...)
 	// Similar a xprintf_P pero imprime en los 2 descriptores pUSB y pBT
 
 va_list args;
-int i;
 
 	// Espero el semaforo del buffer en forma persistente.
 	while ( xSemaphoreTake( sem_stdout_buff, ( TickType_t ) 1 ) != pdTRUE )
@@ -230,12 +231,54 @@ int i;
 //	sFRTOS_write(pBT, (char *)stdout_buff,PRINTF_BUFFER_SIZE);
 
 	xSemaphoreGive( sem_stdout_buff );
-	return(i);
+	return(1);
 
 }
 //------------------------------------------------------------------------------------
 void xprintf_P_init(void)
 {
-	sem_stdout_buff = xSemaphoreCreateMutex();
+	sem_stdout_buff = xSemaphoreCreateMutexStatic( &STDOUT_xMutexBuffer );
 }
 //------------------------------------------------------------------------------------
+bool pub_save_params_in_EE(void)
+{
+
+	return(true);
+}
+//------------------------------------------------------------------------------------
+void pub_configPwrSave(uint8_t modoPwrSave, char *s_startTime, char *s_endTime)
+{
+
+}
+//------------------------------------------------------------------------------------
+void pub_load_defaults(void)
+{
+
+	strncpy_P(systemVars.dlgId, PSTR("SPX000\0"),DLGID_LENGTH);
+	systemVars.debug = DEBUG_NONE;
+
+	// PwrSave
+	systemVars.pwrSave.modo = modoPWRSAVE_ON;
+	systemVars.pwrSave.hora_start.hour = 23;
+	systemVars.pwrSave.hora_start.min = 30;
+	systemVars.pwrSave.hora_fin.hour = 5;
+	systemVars.pwrSave.hora_fin.min = 30;
+
+	// Xbee
+	systemVars.xbee = XBEE_OFF;
+
+	pub_analog_load_defaults();
+	pub_digital_load_defaults();
+	pub_gprs_load_defaults();
+//	pub_outputs_load_defaults();
+//	pub_rangeMeter_load_defaults();
+
+}
+//------------------------------------------------------------------------------------
+bool pub_load_params_from_EE(void)
+{
+
+	return(false);
+}
+//------------------------------------------------------------------------------------
+

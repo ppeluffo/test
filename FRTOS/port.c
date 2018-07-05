@@ -631,6 +631,8 @@ static void prvSleep()
 }
 //-------------------------------------------------------------------------------------
 // Define the function that is called by portSUPPRESS_TICKS_AND_SLEEP().
+void vApplicationSleep( TickType_t xExpectedIdleTime );
+
 void vApplicationSleep( TickType_t xExpectedIdleTime )
 {
 	// Utilizo el RTC16 bits para contar el tiempo de sleep.

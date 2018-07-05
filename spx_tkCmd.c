@@ -27,8 +27,13 @@ static void pv_cmd_rwACH(uint8_t cmd_mode );
 static void pv_cmd_rwNVM(uint8_t cmd_mode );
 static void pv_cmd_OUTPUTS( void );
 
+
+#define WDG_CMD_TIMEOUT	60
+typedef enum { USER_NORMAL, USER_TECNICO } usuario_t;
+
 RtcTimeType_t rtc;
 char aux_buffer[32];
+static usuario_t tipo_usuario;
 
 //----------------------------------------------------------------------------------------
 // FUNCIONES DE CMDMODE
@@ -45,9 +50,12 @@ static void cmdKillFunction(void);
 void tkCmd(void * pvParameters)
 {
 
+( void ) pvParameters;
 uint8_t c;
 
-( void ) pvParameters;
+	// Espero la notificacion para arrancar
+	while ( !startTask )
+		vTaskDelay( ( TickType_t)( 100 / portTICK_RATE_MS ) );
 
 	FRTOS_CMD_init();
 
@@ -63,41 +71,204 @@ uint8_t c;
 
 	cmd_xprintf_P(pUSB, PSTR("starting tkCmd..\r\n\0"));
 
+	tipo_usuario = USER_NORMAL;
+
 	// loop
 	for( ;; )
 	{
 
-//		pub_watchdog_kick(WDG_CMD, WDG_CMD_TIMEOUT);
+		pub_ctl_watchdog_kick(WDG_CMD, WDG_CMD_TIMEOUT);
 
 		// Si no tengo terminal conectada, duermo 5s lo que me permite entrar en tickless.
-//		if ( ! pub_terminal_is_on() ) {
-//			vTaskDelay( ( TickType_t)( 5000 / portTICK_RATE_MS ) );
+		if ( ! pub_ctl_terminal_is_on() ) {
+			vTaskDelay( ( TickType_t)( 5000 / portTICK_RATE_MS ) );
 
-//		} else {
+		} else {
 
 			c = '\0';	// Lo borro para que luego del un CR no resetee siempre el timer.
 			// el read se bloquea 50ms. lo que genera la espera.
 			while ( sFRTOS_read( pUSB, (char *)&c, 1 ) == 1 ) {
 				FRTOS_CMD_process(c);
 			}
-//		}
+		}
 	}
 }
 //------------------------------------------------------------------------------------
 static void cmdStatusFunction(void)
 {
+
+//char aux_str[32];
+uint8_t channel;
+FAT_t l_fat;
+
+//	cmd_xprintf_P(pUSB,PSTR("dlgid: ??\r\n\0") );
+//	cmd_xprintf_P(pUSB,PSTR("size_t: %d\r\n\0"), sizeof(size_t) );
+//	cmd_xprintf_P(pUSB,PSTR("unsigned int: %d\r\n\0"), sizeof(unsigned int) );
+//	cmd_xprintf_P(pUSB,PSTR("int: %d\r\n\0"), sizeof( int) );
+//	cmd_xprintf_P(pUSB,PSTR("port BASE: %d\r\n\0"), sizeof( portBASE_TYPE) );
+//	cmd_xprintf_P(pUSB,PSTR("UBaseType_t: %d\r\n\0"), sizeof(UBaseType_t) );
+//	cmd_xprintf_P(pUSB,PSTR("uint8_t: %d\r\n\0"), sizeof( uint8_t ) );
+
+
+
 	cmd_xprintf_P(pUSB,PSTR("\r\nSpymovil %s %s %s %s\r\n\0"), SPX_HW_MODELO, SPX_FTROS_VERSION, SPX_FW_REV, SPX_FW_DATE);
 	cmd_xprintf_P(pUSB,PSTR("Clock %d Mhz, Tick %d Hz\r\n\0"),SYSMAINCLK, configTICK_RATE_HZ );
 
-	// DlgId
-	cmd_xprintf_P(pUSB,PSTR("dlgid: ??\r\n\0") );
-	cmd_xprintf_P(pUSB,PSTR("size_t: %d\r\n\0"), sizeof(size_t) );
-	cmd_xprintf_P(pUSB,PSTR("unsigned int: %d\r\n\0"), sizeof(unsigned int) );
-	cmd_xprintf_P(pUSB,PSTR("int: %d\r\n\0"), sizeof( int) );
-	cmd_xprintf_P(pUSB,PSTR("port BASE: %d\r\n\0"), sizeof( portBASE_TYPE) );
-	cmd_xprintf_P(pUSB,PSTR("UBaseType_t: %d\r\n\0"), sizeof(UBaseType_t) );
-	cmd_xprintf_P(pUSB,PSTR("uint8_t: %d\r\n\0"), sizeof( uint8_t ) );
+	// SIGNATURE ID
+	//memset(&aux_str,'\0', sizeof(aux_str));
+	//NVM_readID(aux_str);
+	//cmd_xprintf_P(pUSB,PSTR("signature:1 %s\r\n\0"), aux_str);
 
+	// Fecha y Hora
+	pv_cmd_rwRTC( RD_CMD );
+
+	// Memoria
+	FS_fat_read(&l_fat);
+	cmd_xprintf_P(pUSB,PSTR("memory: wrPtr=%d,rdPtr=%d,delPtr=%d,r4wr=%d,r4rd=%d,r4del=%d \r\n\0"), l_fat.wrPTR,l_fat.rdPTR, l_fat.delPTR,l_fat.rcds4wr,l_fat.rcds4rd,l_fat.rcds4del );
+
+	// SERVER
+	cmd_xprintf_P(pUSB,PSTR(">Server:\r\n\0"));
+	cmd_xprintf_P(pUSB,PSTR("  dlgid: %s\r\n\0"), systemVars.dlgId );
+	cmd_xprintf_P(pUSB,PSTR("  apn: %s\r\n\0"), systemVars.apn );
+	cmd_xprintf_P(pUSB,PSTR("  server ip:port: %s:%s\r\n\0"), systemVars.server_ip_address,systemVars.server_tcp_port );
+	cmd_xprintf_P(pUSB,PSTR("  server script: %s\r\n\0"), systemVars.serverScript );
+	cmd_xprintf_P(pUSB,PSTR("  passwd: %s\r\n\0"), systemVars.passwd );
+
+	// MODEM
+	cmd_xprintf_P(pUSB,PSTR(">Modem:\r\n\0"));
+	cmd_xprintf_P(pUSB,PSTR("  ip address: %s\r\n\0"), systemVars.dlg_ip_address);
+	cmd_xprintf_P(pUSB,PSTR("  signalQ: csq=%d, dBm=%d\r\n\0"), systemVars.csq, systemVars.dbm );
+/*	cmd_xprintf_P(pUSB,PSTR("  state: "));
+
+	switch (GPRS_stateVars.state) {
+	case G_ESPERA_APAGADO:
+		cmd_xprintf_P(pUSB, PSTR("await_off\r\n"));
+		break;
+	case G_PRENDER:
+		cmd_xprintf_P(pUSB, PSTR("prendiendo\r\n"));
+		break;
+	case G_CONFIGURAR:
+		cmd_xprintf_P(pUSB, PSTR("configurando\r\n"));
+		break;
+	case G_MON_SQE:
+		cmd_xprintf_P(pUSB, PSTR("mon_sqe\r\n"));
+		break;
+	case G_GET_IP:
+		cmd_xprintf_P(pUSB, PSTR("ip\r\n"));
+		break;
+	case G_INIT_FRAME:
+		cmd_xprintf_P(pUSB, PSTR("init frame\r\n"));
+		break;
+	case G_DATA:
+		cmd_xprintf_P(pUSB, PSTR("data\r\n"));
+		break;
+	default:
+		cmd_xprintf_P(pUSB, PSTR("ERROR\r\n"));
+		break;
+	}
+*/
+
+	// CONFIG
+	cmd_xprintf_P(pUSB, PSTR(">Config:\r\n\0"));
+	switch(systemVars.xbee) {
+	case XBEE_OFF:
+		cmd_xprintf_P(pUSB, PSTR("  xbee: off\r\n\0") );
+		break;
+	case XBEE_MASTER:
+		cmd_xprintf_P(pUSB, PSTR("  xbee: master\r\n\0") );
+		break;
+	case XBEE_SLAVE:
+		cmd_xprintf_P(pUSB, PSTR("  xbee: slave\r\n\0") );
+		break;
+	}
+
+	switch(systemVars.debug) {
+	case DEBUG_NONE:
+		cmd_xprintf_P(pUSB, PSTR("  debug: none\r\n\0") );
+		break;
+	case DEBUG_GPRS:
+		cmd_xprintf_P(pUSB, PSTR("  debug: gprs\r\n\0") );
+		break;
+	case DEBUG_RANGEMETER:
+		cmd_xprintf_P(pUSB, PSTR("  debug: range\r\n\0") );
+		break;
+	case DEBUG_DIGITAL:
+		cmd_xprintf_P(pUSB, PSTR("  debug: digital\r\n\0") );
+		break;
+	}
+
+	cmd_xprintf_P(pUSB, PSTR("  timerDial: [%lu s]/%li\r\n\0"),systemVars.timerDial, pub_gprs_readTimeToNextDial() );
+	cmd_xprintf_P(pUSB, PSTR("  timerPoll: [%d s]\r\n\0"),systemVars.timerPoll );
+
+	// PULSE WIDTH
+	if ( systemVars.rangeMeter_enabled ) {
+		cmd_xprintf_P(pUSB,PSTR("  RangeMeter: ON\r\n"));
+	} else {
+		cmd_xprintf_P(pUSB,PSTR("  RangeMeter: OFF\r\n"));
+	}
+
+	// PWR SAVE:
+	if ( systemVars.pwrSave.modo ==  modoPWRSAVE_OFF ) {
+		cmd_xprintf_P(pUSB, PSTR("  pwrsave=off\r\n\0"));
+	} else {
+		cmd_xprintf_P(pUSB, PSTR("  pwrsave=on start[%02d:%02d], end[%02d:%02d]\r\n\0"), systemVars.pwrSave.hora_start.hour, systemVars.pwrSave.hora_start.min, systemVars.pwrSave.hora_fin.hour, systemVars.pwrSave.hora_fin.min);
+	}
+
+	// OUTPUTS:
+	switch( systemVars.outputs.modo ) {
+	case OUT_OFF:
+		cmd_xprintf_P(pUSB, PSTR("  Outputs: OFF\r\n"));
+		break;
+	case OUT_CONSIGNA:
+		switch( systemVars.outputs.consigna_aplicada ) {
+		case CONSIGNA_DIURNA:
+			cmd_xprintf_P(pUSB, PSTR("  Outputs: CONSIGNA [diurna] (c_dia=%02d:%02d, c_noche=%02d:%02d)\r\n"), systemVars.outputs.consigna_diurna.hour, systemVars.outputs.consigna_diurna.min, systemVars.outputs.consigna_nocturna.hour, systemVars.outputs.consigna_nocturna.min );
+			break;
+		case CONSIGNA_NOCTURNA:
+			cmd_xprintf_P(pUSB, PSTR("  Outputs: CONSIGNA [nocturna] (c_dia=%02d:%02d, c_noche=%02d:%02d)\r\n"), systemVars.outputs.consigna_diurna.hour, systemVars.outputs.consigna_diurna.min, systemVars.outputs.consigna_nocturna.hour, systemVars.outputs.consigna_nocturna.min );
+			break;
+		default:
+			cmd_xprintf_P(pUSB, PSTR("  Outputs: CONSIGNA [error] (c_dia=%02d:%02d, c_noche=%02d:%02d)\r\n"), systemVars.outputs.consigna_diurna.hour, systemVars.outputs.consigna_diurna.min, systemVars.outputs.consigna_nocturna.hour, systemVars.outputs.consigna_nocturna.min );
+			break;
+		}
+		break;
+	case OUT_NORMAL:
+		cmd_xprintf_P(pUSB, PSTR("  Outputs: NORMAL (out_A=%d, out_B=%d)\r\n"), systemVars.outputs.out_A, systemVars.outputs.out_B );
+		break;
+	default:
+		cmd_xprintf_P(pUSB, PSTR("  Outputs: ERROR(%d) (out_A=%d, out_B=%d)\r\n"), systemVars.outputs.modo, systemVars.outputs.out_A, systemVars.outputs.out_B );
+		break;
+	}
+
+	// Configuracion de canales analogicos
+	for ( channel = 0; channel < NRO_ANALOG_CHANNELS; channel++) {
+		if ( systemVars.a_ch_modo[channel] == 'R') {
+			cmd_xprintf_P(pUSB, PSTR("  a%d(*)\0"),channel );
+		} else {
+			cmd_xprintf_P(pUSB, PSTR("  a%d( )\0"),channel );
+		}
+		cmd_xprintf_P(pUSB, PSTR(" [%d-%d mA/ %.02f,%.02f | %04d | %s]\r\n\0"), systemVars.imin[channel],systemVars.imax[channel],systemVars.mmin[channel],systemVars.mmax[channel], systemVars.coef_calibracion[channel], systemVars.an_ch_name[channel] );
+	}
+
+	// Configuracion de canales digitales
+	for ( channel = 0; channel < NRO_DIGITAL_CHANNELS; channel++) {
+		if ( systemVars.d_ch_modo[channel] == 'R') {
+			cmd_xprintf_P(pUSB, PSTR("  d%d(*)\0"),channel );
+		} else {
+			cmd_xprintf_P(pUSB, PSTR("  d%d( )\0"),channel );
+		}
+
+		if ( systemVars.d_ch_type[channel] == 'C') {
+			// Los canales de contadores de pulsos 'C' muestran el factor de conversion
+			cmd_xprintf_P(pUSB, PSTR(" [ C | %s | %.02f ]\r\n\0"), systemVars.d_ch_name[channel],systemVars.d_ch_magpp[channel] );
+		} else {
+			// Los canales de nivel solo muestran el nombre.
+			cmd_xprintf_P(pUSB, PSTR(" [ L | %s ]\r\n\0"), systemVars.d_ch_name[channel] );
+		}
+	}
+
+	// Valores actuales:
+	pub_data_print_frame();
 
 }
 //-----------------------------------------------------------------------------------
@@ -107,10 +278,23 @@ static void cmdResetFunction(void)
 
 	FRTOS_CMD_makeArgv();
 
+	// Reset memory ??
+	if (!strcmp_P( strupr(argv[1]), PSTR("MEMORY\0"))) {
+
+		// Nadie debe usar la memoria !!!
+		vTaskSuspend( xHandle_tkData );
+
+		if (!strcmp_P( strupr(argv[2]), PSTR("SOFT\0"))) {
+			FS_format(false );
+		}
+		if (!strcmp_P( strupr(argv[2]), PSTR("HARD\0"))) {
+			FS_format(true );
+		}
+	}
+
 	cmdClearScreen();
 
 	CCPWrite( &RST.CTRL, RST_SWRST_bm );   /* Issue a Software Reset to initilize the CPU */
-
 
 }
 //------------------------------------------------------------------------------------
@@ -128,7 +312,7 @@ static void cmdWriteFunction(void)
 
 	// EE
 	// write ee pos string
-	if (!strcmp_P( strupr( (char *)argv[1]), PSTR("EE\0"))) {
+	if (!strcmp_P( strupr( (char *)argv[1]), PSTR("EE\0")) && ( tipo_usuario == USER_TECNICO) ) {
 		pv_cmd_rwEE(WR_CMD);
 		return;
 	}
@@ -136,21 +320,21 @@ static void cmdWriteFunction(void)
 	// INA
 	// write ina confReg Value
 	// Solo escribimos el registro 0 de configuracion.
-	if (!strcmp_P( strupr(argv[1]), PSTR("INA\0")) ) {
+	if (!strcmp_P( strupr(argv[1]), PSTR("INA\0")) && ( tipo_usuario == USER_TECNICO) ) {
 		pv_cmd_rwINA(WR_CMD);
 		return;
 	}
 
 	// ANALOG
 	// write analog {ina_id} conf128
-	if (!strcmp_P( strupr(argv[1]), PSTR("ANALOG\0")) ) {
+	if (!strcmp_P( strupr(argv[1]), PSTR("ANALOG\0")) && ( tipo_usuario == USER_TECNICO) ) {
 		pv_cmd_rwACH(WR_CMD);
 		return;
 	}
 
 	// NVM
 	// write nvm pos string
-	if (!strcmp_P( strupr( (char *)argv[1]), PSTR("NVM\0"))) {
+	if (!strcmp_P( strupr( (char *)argv[1]), PSTR("NVM\0")) && ( tipo_usuario == USER_TECNICO) ) {
 		pv_cmd_rwNVM(WR_CMD);
 		return;
 	}
@@ -159,7 +343,7 @@ static void cmdWriteFunction(void)
 	// write out {enable,disable,sleep,awake,set01,set10} {A/B}\r\n\0"));
 	// write out pulse (A/B) (ms)\r\n\0"));
 	// write out power {on|off}\r\n\0"));
-	if (!strcmp_P( strupr( (char *)argv[1]), PSTR("OUT\0"))) {
+	if (!strcmp_P( strupr( (char *)argv[1]), PSTR("OUT\0")) && ( tipo_usuario == USER_TECNICO) ) {
 		pv_cmd_OUTPUTS();
 		return;
 	}
@@ -174,6 +358,18 @@ static void cmdReadFunction(void)
 
 	FRTOS_CMD_makeArgv();
 
+	// WMK
+ 	if (!strcmp_P( strupr(argv[1]), PSTR("WMK\0"))) {
+ 		pub_ctl_print_stack_watermarks();
+ 		return;
+ 	}
+
+ 	// WDT
+ 	if (!strcmp_P( strupr(argv[1]), PSTR("WDT\0"))) {
+ 		pub_ctl_print_wdg_timers();
+ 		return;
+ 	}
+
 	// RTC
 	// read rtc
 	if (!strcmp_P( strupr( (char *)argv[1]), PSTR("RTC\0")) ) {
@@ -181,9 +377,17 @@ static void cmdReadFunction(void)
 		return;
 	}
 
+	// FRAME
+	// read frame
+	if (!strcmp_P( strupr(argv[1]), PSTR("FRAME\0")) ) {
+		pub_data_read_frame();
+		pub_data_print_frame();
+		return;
+	}
+
 	// EE
 	// read ee address length
-	if (!strcmp_P( strupr( (char *)argv[1]), PSTR("EE\0"))) {
+	if (!strcmp_P( strupr( (char *)argv[1]), PSTR("EE\0")) && ( tipo_usuario == USER_TECNICO) ) {
 		pv_cmd_rwEE(RD_CMD);
 		return;
 	}
@@ -191,21 +395,21 @@ static void cmdReadFunction(void)
 	// INA
 	// write ina confReg Value
 	// Solo escribimos el registro 0 de configuracion.
-	if (!strcmp_P( strupr( (char *)argv[1]), PSTR("INA\0")) ) {
+	if (!strcmp_P( strupr( (char *)argv[1]), PSTR("INA\0")) && ( tipo_usuario == USER_TECNICO) ) {
 		pv_cmd_rwINA(RD_CMD);
 		return;
 	}
 
 	// ANALOG
 	// read analog {ch}, bat
-	if (!strcmp_P( strupr(argv[1]), PSTR("ANALOG\0")) ) {
+	if (!strcmp_P( strupr(argv[1]), PSTR("ANALOG\0")) && ( tipo_usuario == USER_TECNICO) ) {
 		pv_cmd_rwACH(RD_CMD);
 		return;
 	}
 
 	// NVM
 	// read nvm address length
-	if (!strcmp_P( strupr( (char *)argv[1]), PSTR("NVM\0"))) {
+	if (!strcmp_P( strupr( (char *)argv[1]), PSTR("NVM\0")) && ( tipo_usuario == USER_TECNICO) ) {
 		pv_cmd_rwNVM(RD_CMD);
 		return;
 	}
@@ -233,8 +437,223 @@ static void cmdClearScreen(void)
 static void cmdConfigFunction(void)
 {
 
+bool retS = false;
+
 	FRTOS_CMD_makeArgv();
 
+	// DLGID
+	if (!strcmp_P( strupr(argv[1]), PSTR("DLGID\0"))) {
+		if ( argv[2] == NULL ) {
+			retS = false;
+		} else {
+			memcpy(systemVars.dlgId, argv[2], sizeof(systemVars.dlgId));
+			systemVars.dlgId[DLGID_LENGTH - 1] = '\0';
+			retS = true;
+		}
+		retS ? pv_snprintfP_OK() : 	pv_snprintfP_ERR();
+		return;
+	}
+
+	// modo
+	// config modo {analog|digital} {0..N} {L|R}
+	//if (!strcmp_P( strupr(argv[1]), PSTR("MODO\0"))) {
+	//	pv_config_modo( argv[2], argv[3], argv[4] );
+	//	return;
+	//}
+
+	// xbee
+	//if (!strcmp_P( strupr(argv[1]), PSTR("XBEE\0"))) {
+	//	if (!strcmp_P( strupr(argv[2]), PSTR("OFF\0"))) {
+	//		systemVars.xbee = XBEE_OFF;
+	//		retS = true;
+	//	} else if (!strcmp_P( strupr(argv[2]), PSTR("MASTER\0"))) {
+	//		systemVars.xbee = XBEE_MASTER;
+	//		retS = true;
+	//	} else if (!strcmp_P( strupr(argv[2]), PSTR("SLAVE\0"))) {
+	//		systemVars.xbee = XBEE_SLAVE;
+	//		retS = true;
+	//	} else {
+	//		retS = false;
+	//	}
+	//	retS ? pv_snprintfP_OK() : 	pv_snprintfP_ERR();
+	//	return;
+	//}
+
+	// config outputs
+	//if (!strcmp_P( strupr(argv[1]), PSTR("OUTPUTS\0")) ) {
+	//	pub_outputs_config( argv[2], argv[3], argv[4] );
+	//	pv_snprintfP_OK();
+	//	return;
+	//}
+
+	// rangemeter {on|off}
+	//if (!strcmp_P( strupr(argv[1]), PSTR("RANGEMETER\0"))) {
+	//	if (!strcmp_P( strupr(argv[2]), PSTR("ON\0"))) {
+	//		systemVars.rangeMeter_enabled = true;
+	//		retS = true;
+	//	} else if (!strcmp_P( strupr(argv[2]), PSTR("OFF\0"))) {
+	//		systemVars.rangeMeter_enabled = false;
+	//		retS = true;
+	//	} else {
+	//		retS = false;
+	//	}
+	//	retS ? pv_snprintfP_OK() : 	pv_snprintfP_ERR();
+	//	return;
+	//}
+
+	// config debug
+	if (!strcmp_P( strupr(argv[1]), PSTR("DEBUG\0"))) {
+		if (!strcmp_P( strupr(argv[2]), PSTR("NONE\0"))) {
+			systemVars.debug = DEBUG_NONE;
+			retS = true;
+		} else if (!strcmp_P( strupr(argv[2]), PSTR("GPRS\0"))) {
+			systemVars.debug = DEBUG_GPRS;
+			retS = true;
+		} else if (!strcmp_P( strupr(argv[2]), PSTR("RANGE\0"))) {
+			systemVars.debug = DEBUG_RANGEMETER;
+			retS = true;
+		} else if (!strcmp_P( strupr(argv[2]), PSTR("DIGITAL\0"))) {
+			systemVars.debug = DEBUG_DIGITAL;
+			retS = true;
+		} else {
+			retS = false;
+		}
+		retS ? pv_snprintfP_OK() : 	pv_snprintfP_ERR();
+		return;
+	}
+
+	// config save
+	if (!strcmp_P( strupr(argv[1]), PSTR("SAVE\0"))) {
+		pub_save_params_in_EE();
+		pv_snprintfP_OK();
+		return;
+	}
+
+	// config analog {0..2} aname imin imax mmin mmax
+	if (!strcmp_P( strupr(argv[1]), PSTR("ANALOG\0")) ) {
+		pub_analog_config_channel( atoi(argv[2]), argv[3], argv[4], argv[5], argv[6], argv[7] );
+		pv_snprintfP_OK();
+		return;
+	}
+
+	// config digital {0..3} type dname magPP
+	if (!strcmp_P( strupr(argv[1]), PSTR("DIGITAL\0")) ) {
+		if ( pub_digital_config_channel( atoi(argv[2]), argv[3], argv[4], argv[5] ) ) {
+			pv_snprintfP_OK();
+		} else {
+			pv_snprintfP_ERR();
+		}
+		return;
+	}
+
+	// config timerpoll
+	if (!strcmp_P( strupr(argv[1]), PSTR("TIMERPOLL\0")) ) {
+		pub_analog_config_timerpoll( argv[2] );
+		pv_snprintfP_OK();
+		return;
+	}
+
+	// config timerdial
+	if (!strcmp_P( strupr(argv[1]), PSTR("TIMERDIAL\0")) ) {
+		pub_gprs_config_timerdial( argv[2] );
+		pv_snprintfP_OK();
+		return;
+	}
+
+	// config calibrar
+	if (!strcmp_P( strupr(argv[1]), PSTR("CFACTOR\0"))) {
+		pub_analog_config_spanfactor( atoi(argv[2]), argv[3] );
+		pv_snprintfP_OK();
+		return;
+	}
+
+	// config default
+	if (!strcmp_P( strupr(argv[1]), PSTR("DEFAULT\0"))) {
+		pub_load_defaults();
+		pv_snprintfP_OK();
+		return;
+	}
+
+	// apn
+	if (!strcmp_P( strupr(argv[1]), PSTR("APN\0"))) {
+		if ( argv[2] == NULL ) {
+			retS = false;
+		} else {
+			memset(systemVars.apn, '\0', sizeof(systemVars.apn));
+			memcpy(systemVars.apn, argv[2], sizeof(systemVars.apn));
+			systemVars.apn[APN_LENGTH - 1] = '\0';
+			retS = true;
+		}
+		retS ? pv_snprintfP_OK() : 	pv_snprintfP_ERR();
+		return;
+	}
+
+	// port ( SERVER IP PORT)
+	if (!strcmp_P( strupr(argv[1]), PSTR("PORT\0"))) {
+		if ( argv[2] == NULL ) {
+			retS = false;
+		} else {
+			memset(systemVars.server_tcp_port, '\0', sizeof(systemVars.server_tcp_port));
+			memcpy(systemVars.server_tcp_port, argv[2], sizeof(systemVars.server_tcp_port));
+			systemVars.server_tcp_port[PORT_LENGTH - 1] = '\0';
+			retS = true;
+		}
+		retS ? pv_snprintfP_OK() : 	pv_snprintfP_ERR();
+		return;
+	}
+
+	// ip (SERVER IP ADDRESS)
+	if (!strcmp_P( strupr(argv[1]), PSTR("IP\0"))) {
+		if ( argv[2] == NULL ) {
+			retS = false;
+		} else {
+			memset(systemVars.server_ip_address, '\0', sizeof(systemVars.server_ip_address));
+			memcpy(systemVars.server_ip_address, argv[2], sizeof(systemVars.server_ip_address));
+			systemVars.server_ip_address[IP_LENGTH - 1] = '\0';
+			retS = true;
+		}
+		retS ? pv_snprintfP_OK() : 	pv_snprintfP_ERR();
+		return;
+	}
+
+	// script ( SERVER SCRIPT SERVICE )
+	if (!strcmp_P( strupr(argv[1]), PSTR("SCRIPT\0"))) {
+		if ( argv[2] == NULL ) {
+			retS = false;
+		} else {
+			memset(systemVars.serverScript, '\0', sizeof(systemVars.serverScript));
+			memcpy(systemVars.serverScript, argv[2], sizeof(systemVars.serverScript));
+			systemVars.serverScript[SCRIPT_LENGTH - 1] = '\0';
+			retS = true;
+		}
+		retS ? pv_snprintfP_OK() : 	pv_snprintfP_ERR();
+		return;
+	}
+
+	// passwd
+	if (!strcmp_P( strupr(argv[1]), PSTR("PASSWD\0"))) {
+		if ( argv[2] == NULL ) {
+			retS = false;
+		} else {
+			memset(systemVars.passwd, '\0', sizeof(systemVars.passwd));
+			memcpy(systemVars.passwd, argv[2], sizeof(systemVars.passwd));
+			systemVars.passwd[PASSWD_LENGTH - 1] = '\0';
+			retS = true;
+		}
+		retS ? pv_snprintfP_OK() : 	pv_snprintfP_ERR();
+		return;
+	}
+
+	// PWRSAVE
+	if (!strcmp_P( strupr(argv[1]), PSTR("PWRSAVE\0"))) {
+		if (!strcmp_P( strupr(argv[2]), PSTR( "ON"))) { pub_configPwrSave ( modoPWRSAVE_ON, argv[3], argv[4] ); }
+		if (!strcmp_P( strupr(argv[2]), PSTR("OFF"))) { pub_configPwrSave ( modoPWRSAVE_OFF, argv[3], argv[4] ); }
+		pv_snprintfP_OK();
+		return;
+	}
+
+	pv_snprintfP_ERR();
+	return;
 
 }
 //------------------------------------------------------------------------------------
@@ -247,24 +666,52 @@ static void cmdHelpFunction(void)
 	if (!strcmp_P( strupr( (char *)argv[1]), PSTR("WRITE\0"))) {
 		cmd_xprintf_P(pUSB,PSTR("-write\r\n\0"));
 		cmd_xprintf_P(pUSB,PSTR("  rtc YYMMDDhhmm\r\n\0"));
-		cmd_xprintf_P(pUSB,PSTR("  ee {pos} {string}\r\n\0"));
-		cmd_xprintf_P(pUSB,PSTR("  ina {id} conf {value}, sens12V {on|off}\r\n\0"));
-		cmd_xprintf_P(pUSB,PSTR("  analog {ina_id} conf128 \r\n\0"));
-		cmd_xprintf_P(pUSB,PSTR("  nvm {pos} {string}\r\n\0"));
-		cmd_xprintf_P(pUSB,PSTR("  out {enable,disable,sleep,awake,set01,set10} {A/B}\r\n\0"));
-		cmd_xprintf_P(pUSB,PSTR("      pulse (A/B) (ms)\r\n\0"));
-		cmd_xprintf_P(pUSB,PSTR("      power {on|off}\r\n\0"));
-
+		if ( tipo_usuario == USER_TECNICO ) {
+			cmd_xprintf_P(pUSB,PSTR("  ee {pos} {string}\r\n\0"));
+			cmd_xprintf_P(pUSB,PSTR("  ina {id} conf {value}, sens12V {on|off}\r\n\0"));
+			cmd_xprintf_P(pUSB,PSTR("  analog {ina_id} conf128 \r\n\0"));
+			cmd_xprintf_P(pUSB,PSTR("  nvm {pos} {string}\r\n\0"));
+			cmd_xprintf_P(pUSB,PSTR("  out {enable,disable,sleep,awake,set01,set10} {A/B}\r\n\0"));
+			cmd_xprintf_P(pUSB,PSTR("      pulse (A/B) (ms)\r\n\0"));
+			cmd_xprintf_P(pUSB,PSTR("      power {on|off}\r\n\0"));
+		}
 		return;
 
 	// HELP READ
 	} else if (!strcmp_P( strupr( (char *)argv[1]), PSTR("READ\0"))) {
 		cmd_xprintf_P(pUSB,PSTR("-read\r\n\0"));
-		cmd_xprintf_P(pUSB,PSTR("  rtc\r\n\0"));
-		cmd_xprintf_P(pUSB,PSTR("  ee {pos} {lenght}\r\n\0"));
-		cmd_xprintf_P(pUSB,PSTR("  ina {id} {conf|chXshv|chXbusv|mfid|dieid}\r\n\0"));
-		cmd_xprintf_P(pUSB,PSTR("  analog {ch}, bat \r\n\0"));
-		cmd_xprintf_P(pUSB,PSTR("  uid, nvm {pos} {lenght}\r\n\0"));
+		cmd_xprintf_P(pUSB,PSTR("  rtc, frame\r\n\0"));
+		if ( tipo_usuario == USER_TECNICO ) {
+			cmd_xprintf_P(pUSB,PSTR("  ee {pos} {lenght}\r\n\0"));
+			cmd_xprintf_P(pUSB,PSTR("  ina {id} {conf|chXshv|chXbusv|mfid|dieid}\r\n\0"));
+			cmd_xprintf_P(pUSB,PSTR("  analog {ch}, bat \r\n\0"));
+			cmd_xprintf_P(pUSB,PSTR("  uid, nvm {pos} {lenght}\r\n\0"));
+		}
+		return;
+
+	// HELP CONFIG
+	} else if (!strcmp_P( strupr(argv[1]), PSTR("CONFIG\0"))) {
+		cmd_xprintf_P(pUSB,PSTR("-config\r\n\0"));
+		cmd_xprintf_P(pUSB,PSTR("  analog {0..4} aname imin imax mmin mmax\r\n\0"));
+		cmd_xprintf_P(pUSB,PSTR("  cfactor {ch} {coef}\r\n\0"));
+		cmd_xprintf_P(pUSB,PSTR("  digital {0..3} type(L,C) dname magPP\r\n\0"));
+		//cmd_xprintf_P(pUSB,PSTR("  rangemeter {on|off}\r\n\0"));
+		cmd_xprintf_P(pUSB,PSTR("  modo {analog|digital} {0..n} {local|remoto}\r\n\0"));
+		//cmd_xprintf_P(pUSB,PSTR("  xbee {off|master|slave}\r\n\0"));
+		//cmd_xprintf_P(pUSB,PSTR("  outputs {off}|{normal o0 o1}|{consigna hhmm_dia hhmm_noche}\r\n\0"));
+		cmd_xprintf_P(pUSB,PSTR("  timerpoll, timerdial, dlgid {name}\r\n\0"));
+		cmd_xprintf_P(pUSB,PSTR("  pwrsave modo [{on|off}] [{hhmm1}, {hhmm2}]\r\n\0"));
+		cmd_xprintf_P(pUSB,PSTR("  apn, port, ip, script, passwd\r\n\0"));
+		cmd_xprintf_P(pUSB,PSTR("  debug {none,gprs,digital,range}\r\n\0"));
+		cmd_xprintf_P(pUSB,PSTR("  default\r\n\0"));
+		cmd_xprintf_P(pUSB,PSTR("  save\r\n\0"));
+		return;
+
+	// HELP RESET
+	} else if (!strcmp_P( strupr(argv[1]), PSTR("RESET\0"))) {
+		cmd_xprintf_P(pUSB,PSTR("-reset\r\n\0"));
+		cmd_xprintf_P(pUSB,PSTR("  memory {soft|hard}\r\n\0"));
+		//cmd_xprintf_P(pUSB,PSTR("  alarm\r\n\0"));
 		return;
 
 	} else {

@@ -19,6 +19,13 @@
  *  Para ver el uso de memoria usamos
  *  avr-nm -n test_io.elf | more
  *
+ * 2018-07-05:
+ * - Paso las colas de USB ( tx,rx) a modo estatico.
+ *   Cada una ocupa 128 bytes de payload mas 36 bytes de control.
+ * - Hago lo mismo con los semaforos sem_SYSVars, sem_FILErcd, sem_USB, sem_I2C, sem_stdout_buff.
+ *   Cada uno ocupa 36 bytes.
+ * - Uso como heap.c el heap1 que genera bloques estaticos.
+ *
  *------------------------------------------------------------------------------------------
  * 2018-07-02:
  *  - Pasamos a FRTOS10. Excluimos timers.c, mpu_wrappers.c, etc.
@@ -133,19 +140,20 @@ int main( void )
 
 	//FreeRTOS_open(pUART_USB, ( UART_RXFIFO + UART_TXQUEUE ));
 	sFRTOS_open(pUSB, 115200 );
-	sFRTOS_open(pBT, 115200 );
+//	sFRTOS_open(pBT, 115200 );
 	sFRTOS_open(pI2C,100);
 	sFRTOS_open(pNVM,0);
 
 	// Creo los semaforos
-	sem_SYSVars = xSemaphoreCreateMutex();
-	//FRTOS_stdio_init();
+	sem_SYSVars = xSemaphoreCreateMutexStatic( &SYSVars_xMutexBuffer );
 	xprintf_P_init();
 
 	startTask = false;
 
 	xTaskCreate(tkCtl, "CTL", tkCtl_STACK_SIZE, NULL, tkCtl_TASK_PRIORITY,  &xHandle_tkCtl );
 	xTaskCreate(tkCmd, "CMD", tkCmd_STACK_SIZE, NULL, tkCmd_TASK_PRIORITY,  &xHandle_tkCmd);
+	xTaskCreate(tkData, "DATA", tkData_STACK_SIZE, NULL, tkData_TASK_PRIORITY,  &xHandle_tkData);
+	xTaskCreate(tkDigital, "DIGI", tkDigital_STACK_SIZE, NULL, tkDigital_TASK_PRIORITY,  &xHandle_tkDigital);
 
 	/* Arranco el RTOS. */
 	vTaskStartScheduler();
@@ -172,8 +180,37 @@ void vApplicationStackOverflowHook( TaskHandle_t xTask, signed char *pcTaskName 
 	// En FreeRTOSConfig.h debemos habilitar
 	// #define configCHECK_FOR_STACK_OVERFLOW          2
 
+	// Me reseteo
+	while(1)
+		;
 //	FRTOS_snprintf_P( stdout_buff,sizeof(stdout_buff),PSTR("PANIC:%s !!\r\n\0"),pcTaskName);
 //	CMD_write(stdout_buff, sizeof(stdout_buff) );
+}
+//------------------------------------------------------------------------------------
+/* configSUPPORT_STATIC_ALLOCATION is set to 1, so the application must provide an
+implementation of vApplicationGetIdleTaskMemory() to provide the memory that is
+used by the Idle task. */
+void vApplicationGetIdleTaskMemory( StaticTask_t **ppxIdleTaskTCBBuffer,
+                                    StackType_t **ppxIdleTaskStackBuffer,
+                                    uint32_t *pulIdleTaskStackSize )
+{
+/* If the buffers to be provided to the Idle task are declared inside this
+function then they must be declared static - otherwise they will be allocated on
+the stack and so not exists after this function exits. */
+static StaticTask_t xIdleTaskTCB;
+static StackType_t uxIdleTaskStack[ configMINIMAL_STACK_SIZE ];
+
+    /* Pass out a pointer to the StaticTask_t structure in which the Idle task's
+    state will be stored. */
+    *ppxIdleTaskTCBBuffer = &xIdleTaskTCB;
+
+    /* Pass out the array that will be used as the Idle task's stack. */
+    *ppxIdleTaskStackBuffer = uxIdleTaskStack;
+
+    /* Pass out the size of the array pointed to by *ppxIdleTaskStackBuffer.
+    Note that, as the array is necessarily of type StackType_t,
+    configMINIMAL_STACK_SIZE is specified in words, not bytes. */
+    *pulIdleTaskStackSize = configMINIMAL_STACK_SIZE;
 }
 //------------------------------------------------------------------------------------
 

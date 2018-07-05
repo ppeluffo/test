@@ -92,7 +92,7 @@
 #define configTICK_RATE_HZ			( ( TickType_t ) 1000 )
 #define configMAX_PRIORITIES		( 4 )
 #define configMINIMAL_STACK_SIZE	( ( unsigned short ) 384 )
-#define configTOTAL_HEAP_SIZE		( (size_t ) ( 10000 ) )
+#define configTOTAL_HEAP_SIZE		( (size_t ) ( 4000 ) )
 #define configMAX_TASK_NAME_LEN		( 8 )
 #define configUSE_TRACE_FACILITY	0
 #define configUSE_16_BIT_TICKS		0
@@ -102,6 +102,11 @@
 /* Co-routine definitions. */
 #define configUSE_CO_ROUTINES 		0
 #define configMAX_CO_ROUTINE_PRIORITIES ( 2 )
+
+/* Memory allocation related definitions. */
+#define configSUPPORT_STATIC_ALLOCATION         1
+#define configSUPPORT_DYNAMIC_ALLOCATION        1
+#define configAPPLICATION_ALLOCATED_HEAP        0
 
 // Lo uso en debug para ver cual tarea se escapa del stack y cuelga al micro.
 //#define configCHECK_FOR_STACK_OVERFLOW          2
@@ -136,7 +141,10 @@ to exclude the API function. */
 #define configCOMMAND_INT_MAX_OUTPUT_SIZE		1
 
 #define configUSE_TICKLESS_IDLE	2
+
 #define portSUPPRESS_TICKS_AND_SLEEP( xIdleTime ) vApplicationSleep( xIdleTime )
 #define configEXPECTED_IDLE_TIME_BEFORE_SLEEP 1500
+
+#define configCHECK_FOR_STACK_OVERFLOW          2
 
 #endif /* FREERTOS_CONFIG_H */

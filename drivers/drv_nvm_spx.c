@@ -192,5 +192,6 @@ void nvm_read_device_serial(struct nvm_device_serial *storage)
 static inline uint8_t nvm_read_production_signature_row(uint8_t address)
 {
 //	return nvm_read_byte_near(NVM_CMD_READ_CALIB_ROW_gc, address);
+	return(0);
 }
 //------------------------------------------------------------------------------------

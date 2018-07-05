@@ -126,11 +126,14 @@ int sFRTOS_UART_USB_open( t_serial_port_device *spd, const uint32_t flags)
 
 	spd->uart_fd = pUSB;
 	spd->xBlockTime = (10 / portTICK_RATE_MS );
-	spd->xBusSemaphore = xSemaphoreCreateMutex();
+	//spd->xBusSemaphore = xSemaphoreCreateMutex();
+	spd->xBusSemaphore = xSemaphoreCreateMutexStatic( &USB_xMutexBuffer );
 	spd->uart.rxQueue_size = UART_USB_RXBUFFER_SIZE;
 	spd->uart.txQueue_size = UART_USB_TXBUFFER_SIZE;
-	spd->uart.rxQueue = xQueueCreate( spd->uart.rxQueue_size, sizeof( char ) );
-	spd->uart.txQueue = xQueueCreate( spd->uart.txQueue_size, sizeof( char ) );
+	//spd->uart.rxQueue = xQueueCreate( spd->uart.rxQueue_size, sizeof( char ) );
+	//spd->uart.txQueue = xQueueCreate( spd->uart.txQueue_size, sizeof( char ) );
+	spd->uart.rxQueue = xQueueCreateStatic( spd->uart.rxQueue_size, sizeof( char ), USB_RX_ucQueueStorageArea, &USB_RX_xStaticQueue );
+	spd->uart.txQueue = xQueueCreateStatic( spd->uart.txQueue_size, sizeof( char ), USB_TX_ucQueueStorageArea, &USB_TX_xStaticQueue );
 	drvUART_USB_open( flags );
 
 	return(pUSB);
