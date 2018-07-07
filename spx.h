@@ -28,6 +28,8 @@
 #include "clksys_driver.h"
 #include <inttypes.h>
 
+#include <l_ringBuffer.h>
+
 #include "TC_driver.h"
 #include "pmic_driver.h"
 #include "wdt_driver.h"
@@ -54,8 +56,8 @@
 //------------------------------------------------------------------------------------
 // DEFINES
 //------------------------------------------------------------------------------------
-#define SPX_FW_REV "0.0.1"
-#define SPX_FW_DATE "@ 20180705"
+#define SPX_FW_REV "0.0.2"
+#define SPX_FW_DATE "@ 20180706"
 
 #define SPX_HW_MODELO "spx HW:xmega256A3B R1.0"
 #define SPX_FTROS_VERSION "FW:test FRTOS10"
@@ -78,11 +80,15 @@
 #define tkCmd_STACK_SIZE		384
 #define tkData_STACK_SIZE		384
 #define tkDigital_STACK_SIZE	384
+#define tkGprs_rx_STACK_SIZE	512
+#define tkGprs_tx_STACK_SIZE	512
 
 #define tkCtl_TASK_PRIORITY	 		( tskIDLE_PRIORITY + 1 )
 #define tkCmd_TASK_PRIORITY	 		( tskIDLE_PRIORITY + 1 )
 #define tkData_TASK_PRIORITY	 	( tskIDLE_PRIORITY + 1 )
 #define tkDigital_TASK_PRIORITY	 	( tskIDLE_PRIORITY + 1 )
+#define tkGprs_rx_TASK_PRIORITY		( tskIDLE_PRIORITY + 1 )
+#define tkGprs_tx_TASK_PRIORITY		( tskIDLE_PRIORITY + 1 )
 
 #define DLGID_LENGTH		7
 #define PARAMNAME_LENGTH	5
@@ -94,7 +100,7 @@
 #define PARAMNAME_LENGTH	5
 
 
-TaskHandle_t xHandle_idle, xHandle_tkCtl, xHandle_tkCmd, xHandle_tkData, xHandle_tkDigital;
+TaskHandle_t xHandle_idle, xHandle_tkCtl, xHandle_tkCmd, xHandle_tkData, xHandle_tkDigital, xHandle_tkGprsRx, xHandle_tkGprsTx;
 
 //------------------------------------------------------------------------------------
 typedef enum { DEBUG_NONE = 0, DEBUG_GPRS, DEBUG_RANGEMETER, DEBUG_DIGITAL } t_debug;
@@ -102,6 +108,7 @@ typedef enum { OUT_OFF = 0, OUT_CONSIGNA, OUT_NORMAL } t_outputs;
 typedef enum { CONSIGNA_DIURNA = 0, CONSIGNA_NOCTURNA } t_consigna_aplicada;
 typedef enum { modoPWRSAVE_OFF = 0, modoPWRSAVE_ON } t_pwrSave;
 typedef enum { XBEE_OFF = 0, XBEE_MASTER, XBEE_SLAVE } t_modoXbee;
+typedef enum { USER_NORMAL, USER_TECNICO } usuario_t;
 //------------------------------------------------------------------------------------
 // Estructura para manejar la hora de aplicar las consignas
 typedef struct {
@@ -203,6 +210,10 @@ systemVarsType systemVars;
 
 #define MODO_DISCRETO ( (systemVars.timerDial > 0 ) ? true : false )
 
+// Mensajes entre tareas
+#define TK_FRAME_READY			0x01	//
+#define TK_REDIAL				0x04	//
+
 bool startTask;
 //------------------------------------------------------------------------------------
 // PROTOTIPOS
@@ -211,6 +222,8 @@ void tkCtl(void * pvParameters);
 void tkCmd(void * pvParameters);
 void tkData(void * pvParameters);
 void tkDigital(void * pvParameters);
+void tkGprsRx(void * pvParameters);
+void tkGprsTx(void * pvParameters);
 
 SemaphoreHandle_t sem_SYSVars;
 StaticSemaphore_t SYSVars_xMutexBuffer;
@@ -224,10 +237,11 @@ void initMCU(void);
 void xprintf_P_init(void);
 int xprintf_P( int fd, PGM_P fmt, ...);
 int cmd_xprintf_P( int fd, PGM_P fmt, ...);
-bool pub_save_params_in_EE(void);
+bool pub_save_params_in_NVMEE(void);
 void pub_configPwrSave(uint8_t modoPwrSave, char *s_startTime, char *s_endTime);
 void pub_load_defaults(void);
-bool pub_load_params_from_EE(void);
+bool pub_load_params_from_NVMEE(void);
+void pub_convert_str_to_time_t ( char *time_str, time_t *time_struct );
 
 // tkData
 void pub_data_read_frame( void );
@@ -241,7 +255,9 @@ void pub_analog_config_timerpoll ( char *s_timerpoll );
 void pub_analog_config_spanfactor ( uint8_t channel, char *s_spanfactor );
 void pub_analog_read_battery ( float *mag_val );
 void pub_analog_read_frame(st_analog_frame *analog_frame );
+
 // digital
+void pub_digital_io_config(void);
 void pub_digital_read_frame( st_digital_frame * dframe, bool reset_counters );
 void pub_digital_load_defaults(void);
 bool pub_digital_config_channel( uint8_t channel,char *s_type, char *s_dname, char *s_magPP );
@@ -253,25 +269,25 @@ void pub_ctl_print_wdg_timers(void);
 void pub_ctl_print_stack_watermarks(void);
 
 // tkGprs
+void pub_gprs_io_config(void);
 int32_t pub_gprs_readTimeToNextDial(void);
 void pub_gprs_redial(void);
 void pub_gprs_config_timerdial ( char *s_timerdial );
 void pub_gprs_load_defaults(void);
 bool pub_gprs_modem_prendido(void);
 
-
 // WATCHDOG
 #define WDG_CMD			0
 #define WDG_CTL			1
 #define WDG_DIN			2
 #define WDG_DAT			3
+#define WDG_GPRSRX		4
+#define WDG_GPRSTX		5
 
-#define WDG_OUT			4
-#define WDG_GPRSRX		5
-#define WDG_GPRSTX		6
+#define WDG_OUT			6
 #define WDG_XBEE		7
 
-#define NRO_WDGS		4
+#define NRO_WDGS		6
 
 
 #endif /* SRC_SPXR1_H_ */

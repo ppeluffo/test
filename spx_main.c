@@ -19,6 +19,52 @@
  *  Para ver el uso de memoria usamos
  *  avr-nm -n test_io.elf | more
  *
+ * GPRS: send NETOPEN cmd (2)
+GPRS: netopen check.(0)
+AT+NETOPEN
++IERROR: Netork is already opened
+ERROR
+
+
+GPRS: send NETOPEN cmd (1)
+GPRS: netopen check.(0)
+ *
+ *
+ * 2018-07-06:
+ * - Configuro el apache para que genere los header minimos:
+ *   En security.conf agrego:
+ *   	ServerSignature Off
+ *   	TraceEnable Off
+ *   Cargo el modulo headers y en apache2.conf agrego
+ *   <IfModule mod_headers.c>
+ *    Header set Server "A"
+ *    Header unset Date
+ *    Header unset Vary
+ *    Header unset Transfer-Encoding
+ *    Header always unset X-Powered-By
+ *    Header unset X-Powered-By
+ *    Header unset X-CF-Powered-By
+ *    Header unset X-Mod-Pagespeed
+ *    Header unset X-Pingback
+ *   </IfModule>
+ *
+ *  Con esto limito el header a
+ *  HTTP/1.1 200 OK
+ *  Date: Fri, 06 Jul 2018 09:28:18 GMT
+ *  Server: Apache
+ *  Transfer-Encoding: chunked
+ *  Content-Type: text/html
+ *
+ *  que son 124 bytes.
+ *
+ *  Lo otro que hacemos es usar para la uart del GPRS colas estaticas de 256 bytes y al
+ *  encolar datos, usamos la funcion xQueueOverwriteFromISR que escribe aun si hay datos, perdiendo
+ *  los primeros.
+ *  Esto haria que se pierdan los headers pero tengamos el payload.
+ *  Por ultimo, cambiamos el protocolo de mandar los inits para mandar mensajes cortos y la configuracion
+ *  la hacemos en tandas.
+ *
+ *
  * 2018-07-05:
  * - Paso las colas de USB ( tx,rx) a modo estatico.
  *   Cada una ocupa 128 bytes de payload mas 36 bytes de control.
@@ -140,6 +186,7 @@ int main( void )
 
 	//FreeRTOS_open(pUART_USB, ( UART_RXFIFO + UART_TXQUEUE ));
 	sFRTOS_open(pUSB, 115200 );
+	sFRTOS_open(pGPRS, 115200 );
 //	sFRTOS_open(pBT, 115200 );
 	sFRTOS_open(pI2C,100);
 	sFRTOS_open(pNVM,0);
@@ -154,6 +201,8 @@ int main( void )
 	xTaskCreate(tkCmd, "CMD", tkCmd_STACK_SIZE, NULL, tkCmd_TASK_PRIORITY,  &xHandle_tkCmd);
 	xTaskCreate(tkData, "DATA", tkData_STACK_SIZE, NULL, tkData_TASK_PRIORITY,  &xHandle_tkData);
 	xTaskCreate(tkDigital, "DIGI", tkDigital_STACK_SIZE, NULL, tkDigital_TASK_PRIORITY,  &xHandle_tkDigital);
+	xTaskCreate(tkGprsRx, "RX", tkGprs_rx_STACK_SIZE, NULL, tkGprs_rx_TASK_PRIORITY,  &xHandle_tkGprsRx );
+	xTaskCreate(tkGprsTx, "TX", tkGprs_tx_STACK_SIZE, NULL, tkGprs_tx_TASK_PRIORITY,  &xHandle_tkGprsTx );
 
 	/* Arranco el RTOS. */
 	vTaskStartScheduler();

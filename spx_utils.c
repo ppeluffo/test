@@ -31,11 +31,22 @@ void initMCU(void)
 	// BLUETOOTH POWER CTL
 	IO_config_BT_PWR_CTL();
 
+	// TERMINAL CTL PIN
+	IO_config_TERMCTL_PIN();
+
 	// TICK:
 	//IO_config_TICK();
 
 	// OUTPUTS
 	OUT_config();
+
+	// GPRS
+	pub_gprs_io_config();
+
+	// IO_DIGITAL
+	pub_digital_io_config();
+
+
 
 }
 //-----------------------------------------------------------
@@ -240,14 +251,50 @@ void xprintf_P_init(void)
 	sem_stdout_buff = xSemaphoreCreateMutexStatic( &STDOUT_xMutexBuffer );
 }
 //------------------------------------------------------------------------------------
-bool pub_save_params_in_EE(void)
+bool pub_save_params_in_NVMEE(void)
 {
+	// Calculo el checksum del systemVars.
+	// Considero el systemVars como un array de chars.
 
+char *p;
+uint8_t checksum;
+uint16_t data_length;
+uint16_t i;
+
+	// Calculo el checksum del systemVars.
+	systemVars.checksum = 0;
+	data_length = sizeof(systemVars);
+//	p = (char*)&systemVars;
+//	checksum = 0;
+	// Recorro todo el systemVars considerando c/byte como un char, hasta
+	// llegar al ultimo ( checksum ) que no lo incluyo !!!.
+//	for ( i = 0; i < (data_length - 1) ; i++) {
+//		checksum += p[i];
+//	}
+//	checksum = ~checksum;
+//	systemVars.checksum = checksum;
+
+	// Guardo systemVars en la EE
+	NVMEE_write(0x00, (char *)&systemVars, sizeof(systemVars));
+
+	//return(checksum);
 	return(true);
 }
 //------------------------------------------------------------------------------------
 void pub_configPwrSave(uint8_t modoPwrSave, char *s_startTime, char *s_endTime)
 {
+	// Recibe como parametros el modo ( 0,1) y punteros a string con las horas de inicio y fin del pwrsave
+	// expresadas en minutos.
+
+	while ( xSemaphoreTake( sem_SYSVars, ( TickType_t ) 1 ) != pdTRUE )
+		taskYIELD();
+
+	systemVars.pwrSave.modo = modoPwrSave;
+
+	if ( s_startTime != NULL ) { pub_convert_str_to_time_t( s_startTime, &systemVars.pwrSave.hora_start); }
+	if ( s_endTime != NULL ) { pub_convert_str_to_time_t( s_endTime, &systemVars.pwrSave.hora_fin); }
+
+	xSemaphoreGive( sem_SYSVars );
 
 }
 //------------------------------------------------------------------------------------
@@ -275,10 +322,53 @@ void pub_load_defaults(void)
 
 }
 //------------------------------------------------------------------------------------
-bool pub_load_params_from_EE(void)
+bool pub_load_params_from_NVMEE(void)
 {
+	// Leo el systemVars desde la EE.
+	// Calculo el checksum. Si no coincide es que hubo algun
+	// error por lo que cargo el default.
 
-	return(false);
+char *p;
+uint8_t stored_checksum, checksum;
+uint16_t data_length;
+uint16_t i;
+
+	// Leo de la EE es systemVars.
+	NVMEE_read(0x00, &systemVars, sizeof(systemVars));
+	return(true);
+
+	// Guardo el checksum que lei.
+	stored_checksum = systemVars.checksum;
+
+	// Calculo el checksum del systemVars leido
+	systemVars.checksum = 0;
+	data_length = sizeof(systemVars);
+	p = (char*)&systemVars;	// Recorro el systemVars como si fuese un array de int8.
+	checksum = 0;
+	for ( i = 0; i < ( data_length - 1 ); i++) {
+		checksum += p[i];
+	}
+	checksum = ~checksum;
+
+	if ( stored_checksum != checksum ) {
+		return(false);
+	}
+
+	return(true);
 }
 //------------------------------------------------------------------------------------
+void pub_convert_str_to_time_t ( char *time_str, time_t *time_struct )
+{
+
+	// Convierte un string hhmm en una estructura time_type que tiene
+	// un campo hora y otro minuto
+
+uint16_t time_num;
+
+	time_num = atol(time_str);
+	time_struct->hour = (uint8_t) (time_num / 100);
+	time_struct->min = (uint8_t)(time_num % 100);
+
+}
+//----------------------------------------------------------------------------------------
 

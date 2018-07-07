@@ -4,7 +4,7 @@
  *  Created on: 27/12/2013
  *      Author: root
  */
-#include <spx.h>
+#include  "spx.h"
 #include "frtos_io.h"
 #include "frtos_cmd.h"
 #include "l_rtc.h"
@@ -13,6 +13,7 @@
 #include "l_anCh.h"
 #include "l_nvm.h"
 #include "l_outputs.h"
+#include "spx_gprs.h"
 
 #define WR_CMD 0
 #define RD_CMD 1
@@ -24,12 +25,12 @@ static void pv_cmd_rwRTC(uint8_t cmd_mode );
 static void pv_cmd_rwEE(uint8_t cmd_mode );
 static void pv_cmd_rwINA(uint8_t cmd_mode );
 static void pv_cmd_rwACH(uint8_t cmd_mode );
-static void pv_cmd_rwNVM(uint8_t cmd_mode );
 static void pv_cmd_OUTPUTS( void );
-
+static void pv_cmd_rwGPRS(uint8_t cmd_mode );
+static void pv_cmd_rwNVMEE(uint8_t cmd_mode );
+static void pv_cmd_rwRTC_SRAM(uint8_t cmd_mode );
 
 #define WDG_CMD_TIMEOUT	60
-typedef enum { USER_NORMAL, USER_TECNICO } usuario_t;
 
 RtcTimeType_t rtc;
 char aux_buffer[32];
@@ -71,7 +72,7 @@ uint8_t c;
 
 	cmd_xprintf_P(pUSB, PSTR("starting tkCmd..\r\n\0"));
 
-	tipo_usuario = USER_NORMAL;
+	tipo_usuario = USER_TECNICO;
 
 	// loop
 	for( ;; )
@@ -317,6 +318,20 @@ static void cmdWriteFunction(void)
 		return;
 	}
 
+	// NVMEE
+	// write nvmee pos string
+	if (!strcmp_P( strupr(argv[1]), PSTR("NVMEE\0")) && ( tipo_usuario == USER_TECNICO) ) {
+		pv_cmd_rwNVMEE(WR_CMD);
+		return;
+	}
+
+	// RTC SRAM
+	// write rtcram pos string
+	if (!strcmp_P( strupr(argv[1]), PSTR("RTCRAM\0")) && ( tipo_usuario == USER_TECNICO) ) {
+		pv_cmd_rwRTC_SRAM(WR_CMD);
+		return;
+	}
+
 	// INA
 	// write ina confReg Value
 	// Solo escribimos el registro 0 de configuracion.
@@ -332,19 +347,20 @@ static void cmdWriteFunction(void)
 		return;
 	}
 
-	// NVM
-	// write nvm pos string
-	if (!strcmp_P( strupr( (char *)argv[1]), PSTR("NVM\0")) && ( tipo_usuario == USER_TECNICO) ) {
-		pv_cmd_rwNVM(WR_CMD);
-		return;
-	}
-
 	// OUT
 	// write out {enable,disable,sleep,awake,set01,set10} {A/B}\r\n\0"));
 	// write out pulse (A/B) (ms)\r\n\0"));
 	// write out power {on|off}\r\n\0"));
 	if (!strcmp_P( strupr( (char *)argv[1]), PSTR("OUT\0")) && ( tipo_usuario == USER_TECNICO) ) {
 		pv_cmd_OUTPUTS();
+		return;
+	}
+
+	// GPRS
+	// write gprs pwr|sw|rts {on|off}
+	// write gprs cmd {atcmd}
+	if (!strcmp_P( strupr(argv[1]), PSTR("GPRS\0")) ) {
+		pv_cmd_rwGPRS(WR_CMD);
 		return;
 	}
 
@@ -392,6 +408,20 @@ static void cmdReadFunction(void)
 		return;
 	}
 
+	// NVMEE
+	// read nvmee address length
+	if (!strcmp_P( strupr(argv[1]), PSTR("NVMEE\0")) && ( tipo_usuario == USER_TECNICO) ) {
+		pv_cmd_rwNVMEE(RD_CMD);
+		return;
+	}
+
+	// RTC SRAM
+	// read rtcram address length
+	if (!strcmp_P( strupr(argv[1]), PSTR("RTCRAM\0")) && ( tipo_usuario == USER_TECNICO) ) {
+		pv_cmd_rwRTC_SRAM(RD_CMD);
+		return;
+	}
+
 	// INA
 	// write ina confReg Value
 	// Solo escribimos el registro 0 de configuracion.
@@ -407,13 +437,6 @@ static void cmdReadFunction(void)
 		return;
 	}
 
-	// NVM
-	// read nvm address length
-	if (!strcmp_P( strupr( (char *)argv[1]), PSTR("NVM\0")) && ( tipo_usuario == USER_TECNICO) ) {
-		pv_cmd_rwNVM(RD_CMD);
-		return;
-	}
-
 	// UID
 	// read uid
 	if (!strcmp_P( strupr( (char *)argv[1]), PSTR("UID\0"))) {
@@ -421,6 +444,12 @@ static void cmdReadFunction(void)
 		return;
 	}
 
+	// GPRS
+	// read gprs (rsp,cts,dcd,ri)
+	if (!strcmp_P( strupr(argv[1]), PSTR("GPRS\0")) ) {
+		pv_cmd_rwGPRS(RD_CMD);
+		return;
+	}
 
 	// CMD NOT FOUND
 	cmd_xprintf_P(pUSB,PSTR("ERROR\r\nCMD NOT DEFINED\r\n\0"));
@@ -440,6 +469,22 @@ static void cmdConfigFunction(void)
 bool retS = false;
 
 	FRTOS_CMD_makeArgv();
+
+	// USER
+	if (!strcmp_P( strupr(argv[1]), PSTR("USER\0"))) {
+		if (!strcmp_P( strupr(argv[2]), PSTR("TECNICO\0"))) {
+			tipo_usuario = USER_TECNICO;
+			pv_snprintfP_OK();
+			return;
+		}
+		if (!strcmp_P( strupr(argv[2]), PSTR("NORMAL\0"))) {
+			tipo_usuario = USER_NORMAL;
+			pv_snprintfP_OK();
+			return;
+		}
+		pv_snprintfP_ERR();
+		return;
+	}
 
 	// DLGID
 	if (!strcmp_P( strupr(argv[1]), PSTR("DLGID\0"))) {
@@ -524,7 +569,7 @@ bool retS = false;
 
 	// config save
 	if (!strcmp_P( strupr(argv[1]), PSTR("SAVE\0"))) {
-		pub_save_params_in_EE();
+		pub_save_params_in_NVMEE();
 		pv_snprintfP_OK();
 		return;
 	}
@@ -667,13 +712,14 @@ static void cmdHelpFunction(void)
 		cmd_xprintf_P(pUSB,PSTR("-write\r\n\0"));
 		cmd_xprintf_P(pUSB,PSTR("  rtc YYMMDDhhmm\r\n\0"));
 		if ( tipo_usuario == USER_TECNICO ) {
-			cmd_xprintf_P(pUSB,PSTR("  ee {pos} {string}\r\n\0"));
+			cmd_xprintf_P(pUSB,PSTR("  ee,nvmee,rtcram {pos} {string}\r\n\0"));
 			cmd_xprintf_P(pUSB,PSTR("  ina {id} conf {value}, sens12V {on|off}\r\n\0"));
 			cmd_xprintf_P(pUSB,PSTR("  analog {ina_id} conf128 \r\n\0"));
-			cmd_xprintf_P(pUSB,PSTR("  nvm {pos} {string}\r\n\0"));
 			cmd_xprintf_P(pUSB,PSTR("  out {enable,disable,sleep,awake,set01,set10} {A/B}\r\n\0"));
 			cmd_xprintf_P(pUSB,PSTR("      pulse (A/B) (ms)\r\n\0"));
 			cmd_xprintf_P(pUSB,PSTR("      power {on|off}\r\n\0"));
+			cmd_xprintf_P(pUSB,PSTR("  gprs (pwr|sw|cts|dtr) {on|off}\r\n\0"));
+			cmd_xprintf_P(pUSB,PSTR("       cmd {atcmd}, redial\r\n\0"));
 		}
 		return;
 
@@ -682,16 +728,18 @@ static void cmdHelpFunction(void)
 		cmd_xprintf_P(pUSB,PSTR("-read\r\n\0"));
 		cmd_xprintf_P(pUSB,PSTR("  rtc, frame\r\n\0"));
 		if ( tipo_usuario == USER_TECNICO ) {
-			cmd_xprintf_P(pUSB,PSTR("  ee {pos} {lenght}\r\n\0"));
+			cmd_xprintf_P(pUSB,PSTR("  ee,nvmee,rtcram {pos} {lenght}\r\n\0"));
 			cmd_xprintf_P(pUSB,PSTR("  ina {id} {conf|chXshv|chXbusv|mfid|dieid}\r\n\0"));
 			cmd_xprintf_P(pUSB,PSTR("  analog {ch}, bat \r\n\0"));
 			cmd_xprintf_P(pUSB,PSTR("  uid, nvm {pos} {lenght}\r\n\0"));
+			cmd_xprintf_P(pUSB,PSTR("  gprs (rsp,rts,dcd,ri)\r\n\0"));
 		}
 		return;
 
 	// HELP CONFIG
 	} else if (!strcmp_P( strupr(argv[1]), PSTR("CONFIG\0"))) {
 		cmd_xprintf_P(pUSB,PSTR("-config\r\n\0"));
+		cmd_xprintf_P(pUSB,PSTR("  user {normal|tecnico}\r\n\0"));
 		cmd_xprintf_P(pUSB,PSTR("  analog {0..4} aname imin imax mmin mmax\r\n\0"));
 		cmd_xprintf_P(pUSB,PSTR("  cfactor {ch} {coef}\r\n\0"));
 		cmd_xprintf_P(pUSB,PSTR("  digital {0..3} type(L,C) dname magPP\r\n\0"));
@@ -714,6 +762,11 @@ static void cmdHelpFunction(void)
 		//cmd_xprintf_P(pUSB,PSTR("  alarm\r\n\0"));
 		return;
 
+	// HELP KILL
+	} else if (!strcmp_P( strupr(argv[1]), PSTR("KILL\0"))) {
+		cmd_xprintf_P(pUSB,PSTR("-kill {data,digi,gprstx,gprsrx,outputs}\r\n\0"));
+		return;
+
 	} else {
 
 	// HELP GENERAL
@@ -734,8 +787,43 @@ static void cmdHelpFunction(void)
 //------------------------------------------------------------------------------------
 static void cmdKillFunction(void)
 {
+	FRTOS_CMD_makeArgv();
 
-	pv_snprintfP_OK();
+	// KILL DATA
+	if (!strcmp_P( strupr(argv[1]), PSTR("DATA\0"))) {
+		vTaskSuspend( xHandle_tkData );
+		pub_ctl_watchdog_kick(WDG_DAT, 0xFFFF);
+		pv_snprintfP_OK();
+		return;
+	}
+
+	// KILL DIGITAL
+	if (!strcmp_P( strupr(argv[1]), PSTR("DIGI\0"))) {
+		vTaskSuspend( xHandle_tkDigital );
+		pub_ctl_watchdog_kick(WDG_DIN, 0xFFFF);
+		pv_snprintfP_OK();
+		return;
+	}
+
+	// KILL GPRS
+	if (!strcmp_P( strupr(argv[1]), PSTR("GPRSTX\0"))) {
+		vTaskSuspend( xHandle_tkGprsTx );
+		pub_ctl_watchdog_kick(WDG_GPRSTX, 0xFFFF);
+		// Dejo la flag de modem prendido para poder leer comandos
+		GPRS_stateVars.modem_prendido = true;
+		pv_snprintfP_OK();
+		return;
+	}
+
+	// KILL RX
+	if (!strcmp_P( strupr(argv[1]), PSTR("GPRSRX\0"))) {
+		vTaskSuspend( xHandle_tkGprsRx );
+		pub_ctl_watchdog_kick(WDG_GPRSRX, 0xFFFF);
+		pv_snprintfP_OK();
+		return;
+	}
+
+	pv_snprintfP_ERR();
 	return;
 }
 //------------------------------------------------------------------------------------
@@ -906,14 +994,14 @@ uint8_t channel;
 	}
 }
 //------------------------------------------------------------------------------------
-static void pv_cmd_rwNVM(uint8_t cmd_mode )
+static void pv_cmd_rwNVMEE(uint8_t cmd_mode )
 {
 
 bool retS;
 uint8_t length = 0;
 char *p;
 
-	// read nvm {pos} {lenght}
+	// read nvmee {pos} {lenght}
 	if ( cmd_mode == RD_CMD ) {
 		memset( aux_buffer, '\0', sizeof(aux_buffer));
 		retS = NVMEE_read( (uint32_t)(atol(argv[2])), &aux_buffer[0], (uint8_t)(atoi(argv[3])) );
@@ -989,3 +1077,160 @@ char driver_id;
 	}
 }
 //------------------------------------------------------------------------------------
+static void pv_cmd_rwGPRS(uint8_t cmd_mode )
+{
+
+uint8_t pin;
+char *p;
+
+	if ( cmd_mode == WR_CMD ) {
+
+		// write gprs (pwr|sw|rts|dtr) {on|off}
+
+		if (!strcmp_P( strupr(argv[2]), PSTR("PWR\0")) ) {
+			if (!strcmp_P( strupr(argv[3]), PSTR("ON\0")) ) {
+				IO_set_GPRS_PWR(); pv_snprintfP_OK(); return;
+			}
+			if (!strcmp_P( strupr(argv[3]), PSTR("OFF\0")) ) {
+				IO_clr_GPRS_PWR(); pv_snprintfP_OK(); return;
+			}
+			pv_snprintfP_ERR();
+			return;
+		}
+
+		if (!strcmp_P( strupr(argv[2]), PSTR("SW\0")) ) {
+			if (!strcmp_P( strupr(argv[3]), PSTR("ON\0")) ) {
+				IO_set_GPRS_SW();
+				pv_snprintfP_OK(); return;
+			}
+			if (!strcmp_P( strupr(argv[3]), PSTR("OFF\0")) ) {
+				IO_clr_GPRS_SW(); pv_snprintfP_OK(); return;
+			}
+			pv_snprintfP_ERR();
+			return;
+		}
+
+		if (!strcmp_P( strupr(argv[2]), PSTR("CTS\0")) ) {
+			if (!strcmp_P( strupr(argv[3]), PSTR("ON\0")) ) {
+				IO_set_GPRS_CTS(); pv_snprintfP_OK(); return;
+			}
+			if (!strcmp_P( strupr(argv[3]), PSTR("OFF\0")) ) {
+				IO_clr_GPRS_CTS(); pv_snprintfP_OK(); return;
+			}
+			pv_snprintfP_ERR();
+			return;
+		}
+
+		// Por ahora cableo DTR a CTS.
+
+		if (!strcmp_P( strupr(argv[2]), PSTR("DTR\0")) ) {
+			if (!strcmp_P( strupr(argv[3]), PSTR("ON\0")) ) {
+				IO_set_GPRS_CTS(); pv_snprintfP_OK(); return;
+			}
+			if (!strcmp_P( strupr(argv[3]), PSTR("OFF\0")) ) {
+				IO_clr_GPRS_CTS(); pv_snprintfP_OK(); return;
+			}
+			pv_snprintfP_ERR();
+			return;
+		}
+
+		// write gprs redial
+		if (!strcmp_P( strupr(argv[2]), PSTR("REDIAL\0")) ) {
+			pub_gprs_redial();
+			return;
+		}
+		// ATCMD
+		// // write gprs cmd {atcmd}
+		if (!strcmp_P(strupr(argv[2]), PSTR("CMD\0"))) {
+
+			pub_gprs_flush_RX_buffer();
+			xprintf_P(pGPRS,PSTR("%s\r\0"),argv[3] );
+			cmd_xprintf_P(pUSB,PSTR("sent->%s\r\n\0"),argv[3] );
+			return;
+		}
+
+		return;
+	}
+
+	if ( cmd_mode == RD_CMD ) {
+		// read gprs (rsp,cts,dcd,ri)
+
+			// ATCMD
+			// read gprs rsp
+			if (!strcmp_P(strupr(argv[2]), PSTR("RSP\0"))) {
+				cmd_xprintf_P(pUSB,PSTR("rx:>%s\r\n\0"), pub_gprs_rxbuffer_getPtr() );
+				return;
+			}
+
+			// DCD
+			if (!strcmp_P( strupr(argv[2]), PSTR("DCD\0")) ) {
+				pin = IO_read_DCD();
+				cmd_xprintf_P(pUSB,PSTR("DCD=%d\r\n\0"),pin);
+				pv_snprintfP_OK();
+				return;
+			}
+
+			// RI
+			if (!strcmp_P( strupr(argv[2]), PSTR("RI\0")) ) {
+				pin = IO_read_RI();
+				cmd_xprintf_P(pUSB,PSTR("RI=%d\r\n\0"),pin);
+				pv_snprintfP_OK();
+				return;
+			}
+
+			// RTS
+			if (!strcmp_P( strupr(argv[2]), PSTR("RTS\0")) ) {
+				pin = IO_read_RTS();
+				cmd_xprintf_P(pUSB,PSTR("RTS=%d\r\n\0"),pin);
+				pv_snprintfP_OK();
+				return;
+			}
+
+
+			pv_snprintfP_ERR();
+			return;
+	}
+
+}
+//------------------------------------------------------------------------------------
+static void pv_cmd_rwRTC_SRAM(uint8_t cmd_mode )
+{
+	// Como se usa para leer memoria sram del RTC, la impresion la hacemos en hex
+
+bool retS;
+uint8_t length = 0;
+char *p;
+uint8_t i;
+
+	// read ee {pos} {lenght}
+	if ( cmd_mode == RD_CMD ) {
+		memset(aux_buffer, '\0', sizeof(aux_buffer));
+		retS = RTC_read( (uint32_t)(atol(argv[2])), &aux_buffer[0], (uint8_t)(atoi(argv[3])) );
+		if ( retS ) {
+			// El string leido lo devuelve en cmd_printfBuff por lo que le agrego el CR.
+			cmd_xprintf_P( pUSB, PSTR("\r\n\0"));
+			for (i=0; i < atoi(argv[3]); i++ ) {
+				cmd_xprintf_P( pUSB,PSTR("[0x%02x]"),aux_buffer[i]);
+			}
+			cmd_xprintf_P( pUSB,PSTR( "\r\n\0"));
+		}
+		retS ? pv_snprintfP_OK() : 	pv_snprintfP_ERR();
+		return;
+	}
+
+	// write rtc pos string
+	if ( cmd_mode == WR_CMD ) {
+		// Calculamos el largo del texto a escribir en la eeprom.
+		p = argv[3];
+		while (*p != 0) {
+			p++;
+			length++;
+		}
+
+		retS = RTC_write( (uint32_t)(atol(argv[2])), argv[3], length );
+		retS ? pv_snprintfP_OK() : 	pv_snprintfP_ERR();
+		return;
+	}
+}
+//------------------------------------------------------------------------------------
+

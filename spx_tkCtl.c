@@ -89,10 +89,10 @@ uint16_t recSize;
 
 	// CONFIGURACION DE EE
 	// Leo los parametros del la EE y si tengo error, cargo por defecto
-	if ( ! pub_load_params_from_EE() ) {
+//	if ( ! pub_load_params_from_NVMEE() ) {
 		pub_load_defaults();
-		cmd_xprintf_P(pUSB,PSTR("\r\nLoading defaults !!\r\n\0"));
-	}
+//		cmd_xprintf_P(pUSB,PSTR("\r\nLoading defaults !!\r\n\0"));
+//	}
 
 	// FILESYSTEM
 	if ( FS_open() ) {
@@ -188,8 +188,9 @@ char buffer[10];
 	for ( wdg = 0; wdg < NRO_WDGS; wdg++ ) {
 		if ( --watchdog_timers[wdg] <= 0 ) {
 			memset(buffer,'\0', 10);
-			strcpy_P(buffer, (PGM_P)pgm_read_word(&(wdg_names[wdg])));
-			cmd_xprintf_P(pUSB,PSTR("CTL: WDG TO(%s) !!\r\n\0"),buffer);
+			//strcpy_P(buffer, (PGM_P)pgm_read_word(&(wdg_names[wdg])));
+			//cmd_xprintf_P(pUSB,PSTR("CTL: WDG TO(%s) !!\r\n\0"),buffer);
+			cmd_xprintf_P(pUSB,PSTR("CTL: WDG TO(%d) !!\r\n\0"),wdg);
 			vTaskDelay( ( TickType_t)( 500 / portTICK_RATE_MS ) );
 
 			// Me reseteo por watchdog
@@ -214,6 +215,11 @@ void pub_ctl_watchdog_kick(uint8_t taskWdg, uint16_t timeout_in_secs )
 {
 	// Reinicia el watchdog de la tarea taskwdg con el valor timeout.
 	// timeout es uint16_t por lo tanto su maximo valor en segundos es de 65536 ( 18hs )
+
+	if ( taskWdg >= NRO_WDGS ) {
+		cmd_xprintf_P( pUSB,PSTR("CTL: WDG no definido (%d)!!\r\n\0"),taskWdg);
+		return;
+	}
 
 	while ( xSemaphoreTake( sem_SYSVars, ( TickType_t ) 1 ) != pdTRUE )
 		taskYIELD();

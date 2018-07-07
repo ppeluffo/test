@@ -17,6 +17,7 @@
 #include "frtos_io.h"
 
 void drvUART_USB_open( const uint32_t flags );
+void drvUART_GPRS_open( const uint32_t flags );
 void drvUART_BT_open( const uint32_t flags );
 void drvUART_InterruptOn( const int UARTx );
 void drvUART_InterruptOff( const int UARTx );

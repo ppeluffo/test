@@ -24,6 +24,7 @@ typedef enum {
 	pI2C,
 	pNVM,
 	pBT,
+	pGPRS,
 
 } t_fd;
 
@@ -68,7 +69,7 @@ typedef struct {
 
 // Creo las estructuras de los dispositivos
 
-t_serial_port_device spd_USB, spd_BT;
+t_serial_port_device spd_USB, spd_BT, spd_GPRS;
 t_i2c_device	spd_I2C;
 t_nvmc_device spd_NVM;
 
@@ -82,6 +83,16 @@ static StaticQueue_t USB_RX_xStaticQueue;
 static StaticQueue_t USB_TX_xStaticQueue;
 uint8_t USB_RX_ucQueueStorageArea[ UART_USB_RXBUFFER_SIZE * sizeof(char) ];
 uint8_t USB_TX_ucQueueStorageArea[ UART_USB_TXBUFFER_SIZE * sizeof(char) ];
+
+#define  UART_GPRS_RXBUFFER_SIZE ( ( uint8_t ) ( 255 ))
+#define  UART_GPRS_TXBUFFER_SIZE ( ( uint8_t ) ( 255 ))
+
+StaticSemaphore_t GPRS_xMutexBuffer;
+static StaticQueue_t GPRS_RX_xStaticQueue;
+static StaticQueue_t GPRS_TX_xStaticQueue;
+uint8_t GPRS_RX_ucQueueStorageArea[ UART_GPRS_RXBUFFER_SIZE * sizeof(char) ];
+uint8_t GPRS_TX_ucQueueStorageArea[ UART_GPRS_TXBUFFER_SIZE * sizeof(char) ];
+
 
 #define  UART_BT_RXBUFFER_SIZE ( ( uint8_t ) ( 128 ))
 #define  UART_BT_TXBUFFER_SIZE ( ( uint8_t ) ( 128 ))
@@ -105,6 +116,7 @@ uint8_t USB_TX_ucQueueStorageArea[ UART_USB_TXBUFFER_SIZE * sizeof(char) ];
 int sFRTOS_open( int fd, const uint32_t flags);
 int sFRTOS_UART_USB_open( t_serial_port_device *spd, const uint32_t flags);
 int sFRTOS_UART_BT_open( t_serial_port_device *spd, const uint32_t flags);
+int sFRTOS_UART_GPRS_open( t_serial_port_device *spd, const uint32_t flags);
 int sFRTOS_I2C_open( t_i2c_device *spd, const uint32_t flags);
 int sFRTOS_NVM_open( t_nvmc_device *spd, const uint32_t flags);
 

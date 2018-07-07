@@ -11,7 +11,7 @@ bool signature = false;
 char signature_str[12];
 
 //----------------------------------------------------------------------------
-int8_t NVMEE_read( uint32_t rdAddress, char *data, uint8_t length )
+int8_t NVMEE_read( uint32_t rdAddress, char *data, uint16_t length )
 {
 	// Lee en la EE, desde la posicion 'address', 'length' bytes
 	// y los deja en el buffer apuntado por 'data'
@@ -38,7 +38,7 @@ uint8_t xBytes = 0;
 
 }
 //----------------------------------------------------------------------------
-int8_t NVMEE_write( uint32_t wrAddress, char *data, uint8_t length )
+int8_t NVMEE_write( uint32_t wrAddress, char *data, uint16_t length )
 {
 
 size_t xReturn = 0U;

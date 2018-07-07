@@ -180,6 +180,17 @@ ISR(PORTB_INT0_vect)
 //------------------------------------------------------------------------------------
 // FUNCIONES PUBLICAS
 //------------------------------------------------------------------------------------
+void pub_digital_io_config(void)
+{
+	// INPUTS DIGITAL
+	IO_config_PA0();
+	IO_config_PA2();
+	IO_config_PB2();
+	IO_config_PB7();
+	IO_config_CLRD();
+
+}
+//------------------------------------------------------------------------------------
 void pub_digital_read_frame( st_digital_frame * dframe, bool reset_counters )
 {
 

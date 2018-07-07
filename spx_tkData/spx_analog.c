@@ -34,7 +34,7 @@ void pub_analog_load_defaults(void)
 
 uint8_t channel;
 
-	systemVars.timerPoll = 15;
+	systemVars.timerPoll = 300;
 
 	for ( channel = 0; channel < NRO_ANALOG_CHANNELS; channel++) {
 		systemVars.coef_calibracion[channel] = 3646;

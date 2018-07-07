@@ -24,6 +24,9 @@ int8_t retS = -1;
 	case pUSB:
 		retS = sFRTOS_UART_USB_open( &spd_USB, flags );
 		break;
+	case pGPRS:
+		retS = sFRTOS_UART_GPRS_open( &spd_GPRS, flags );
+		break;
 	case pI2C:
 		retS = sFRTOS_I2C_open( &spd_I2C, flags );
 		break;
@@ -48,6 +51,9 @@ int sFRTOS_ioctl( int fd, uint32_t ulRequest, void *pvValue )
 	switch(fd) {
 	case pUSB:
 		retS = sFRTOS_UART_ioctl( &spd_USB, ulRequest, pvValue);
+		break;
+	case pGPRS:
+		retS = sFRTOS_UART_ioctl( &spd_GPRS, ulRequest, pvValue);
 		break;
 	case pI2C:
 		retS = sFRTOS_I2C_ioctl( &spd_I2C, ulRequest, pvValue);
@@ -75,6 +81,9 @@ int8_t retS = -1;
 	case pUSB:
 		retS = sFRTOS_UART_queue_write( &spd_USB, pvBuffer, xBytes );
 		break;
+	case pGPRS:
+		retS = sFRTOS_UART_queue_write( &spd_GPRS, pvBuffer, xBytes );
+		break;
 	case pI2C:
 		retS = sFRTOS_I2C_write( &spd_I2C, pvBuffer, xBytes );
 		break;
@@ -98,6 +107,9 @@ int8_t retS = -1;
 	switch(fd) {
 	case pUSB:
 		retS = sFRTOS_UART_queue_read( &spd_USB, pvBuffer, xBytes );
+		break;
+	case pGPRS:
+		retS = sFRTOS_UART_queue_read( &spd_GPRS, pvBuffer, xBytes );
 		break;
 	case pI2C:
 		retS = sFRTOS_I2C_read( &spd_I2C, pvBuffer, xBytes );
@@ -135,6 +147,28 @@ int sFRTOS_UART_USB_open( t_serial_port_device *spd, const uint32_t flags)
 	spd->uart.rxQueue = xQueueCreateStatic( spd->uart.rxQueue_size, sizeof( char ), USB_RX_ucQueueStorageArea, &USB_RX_xStaticQueue );
 	spd->uart.txQueue = xQueueCreateStatic( spd->uart.txQueue_size, sizeof( char ), USB_TX_ucQueueStorageArea, &USB_TX_xStaticQueue );
 	drvUART_USB_open( flags );
+
+	return(pUSB);
+}
+//----------------------------------------------------------------------------
+int sFRTOS_UART_GPRS_open( t_serial_port_device *spd, const uint32_t flags)
+{
+	// Funcion privada especializada en abrir un puerto serial ( uart )
+	// No se invoca directamente !!!
+	// Las queue no pueden ser mayores a 256 bytes.
+	// Retorna el fd ( valor > 0 ).
+
+	spd->uart_fd = pGPRS;
+	spd->xBlockTime = (10 / portTICK_RATE_MS );
+	//spd->xBusSemaphore = xSemaphoreCreateMutex();
+	spd->xBusSemaphore = xSemaphoreCreateMutexStatic( &GPRS_xMutexBuffer );
+	spd->uart.rxQueue_size = UART_GPRS_RXBUFFER_SIZE;
+	spd->uart.txQueue_size = UART_GPRS_TXBUFFER_SIZE;
+	//spd->uart.rxQueue = xQueueCreate( spd->uart.rxQueue_size, sizeof( char ) );
+	//spd->uart.txQueue = xQueueCreate( spd->uart.txQueue_size, sizeof( char ) );
+	spd->uart.rxQueue = xQueueCreateStatic( spd->uart.rxQueue_size, sizeof( char ), GPRS_RX_ucQueueStorageArea, &GPRS_RX_xStaticQueue );
+	spd->uart.txQueue = xQueueCreateStatic( spd->uart.txQueue_size, sizeof( char ), GPRS_TX_ucQueueStorageArea, &GPRS_TX_xStaticQueue );
+	drvUART_GPRS_open( flags );
 
 	return(pUSB);
 }
@@ -253,15 +287,16 @@ int xBytesReceived = 0U;
 portTickType xTicksToWait;
 xTimeOutType xTimeOut;
 
-	xTicksToWait = spd->xBlockTime;
-	xTicksToWait = 2;
-	vTaskSetTimeOutState( &xTimeOut );
+	// Maximo tiempo de espera a que lleguen los bytes que quiero leer.
+	//xTicksToWait = spd->xBlockTime;
+	xTicksToWait = 15;
 
+	vTaskSetTimeOutState( &xTimeOut );
 	// Are there any more bytes to be received?
 	while( xBytesReceived < xBytes )
 	{
-		// Receive the next character
-		if( xQueueReceive( spd->uart.rxQueue, &((char *)pvBuffer)[ xBytesReceived ], xTicksToWait ) == pdTRUE ) {
+		// Receive the next character. Si no hay nada espero 5 ticks.
+		if( xQueueReceive( spd->uart.rxQueue, &((char *)pvBuffer)[ xBytesReceived ], 5 ) == pdTRUE ) {
 			xBytesReceived++;
 		}
 //		else {
